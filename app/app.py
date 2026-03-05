@@ -40,21 +40,22 @@ class Track(db.Model):
     calories = db.Column(db.Float)
     track_id = db.Column(db.String(256), unique=True)
     coordinates = db.Column(db.Text)
+    trackpoints = db.Column(db.Text)
 
 
 with app.app_context():
     db.create_all()
-    # Migration: add coordinates column if missing
     from sqlalchemy import inspect as sa_inspect
     inspector = sa_inspect(db.engine)
     cols = [c["name"] for c in inspector.get_columns("track")]
-    if "coordinates" not in cols:
-        with db.engine.connect() as conn:
-            conn.execute(db.text("ALTER TABLE track ADD COLUMN coordinates TEXT"))
-            conn.commit()
+    for col_name in ("coordinates", "trackpoints"):
+        if col_name not in cols:
+            with db.engine.connect() as conn:
+                conn.execute(db.text(f"ALTER TABLE track ADD COLUMN {col_name} TEXT"))
+                conn.commit()
 
 
-# --------------- GPX Parsing ---------------
+# --------------- Parsing helpers ---------------
 
 def haversine(lat1, lon1, lat2, lon2):
     R = 6371000
@@ -84,11 +85,7 @@ def strip_ns(tag):
 
 
 def find_all_recursive(elem, local_name):
-    results = []
-    for child in elem.iter():
-        if strip_ns(child.tag) == local_name:
-            results.append(child)
-    return results
+    return [c for c in elem.iter() if strip_ns(c.tag) == local_name]
 
 
 def find_child(elem, local_name):
@@ -105,17 +102,104 @@ def get_text(elem, local_name):
     return None
 
 
+def build_trackpoints_and_metrics(points):
+    """Given raw points [{lat,lon,ele,time,hr,cad,speed}...], compute metrics and trackpoints JSON."""
+    if len(points) < 2:
+        return None, None, "Not enough trackpoints"
+
+    t0 = points[0]["time"]
+    cum_dist = 0.0
+    elevation_gain = 0.0
+    elevation_loss = 0.0
+    hrs = []
+    cads = []
+    speeds = []
+    tps = []  # trackpoints for storage
+
+    # First point
+    tps.append({
+        "lat": round(points[0]["lat"], 6), "lon": round(points[0]["lon"], 6),
+        "ele": round(points[0]["ele"], 1) if points[0]["ele"] is not None else None,
+        "time_s": 0.0, "dist_m": 0.0,
+        "hr": points[0]["hr"], "cad": points[0]["cad"], "speed": points[0]["speed"],
+    })
+    if points[0]["hr"] is not None:
+        hrs.append(points[0]["hr"])
+    if points[0]["cad"] is not None:
+        cads.append(points[0]["cad"])
+
+    for i in range(1, len(points)):
+        p0, p1 = points[i - 1], points[i]
+        d = haversine(p0["lat"], p0["lon"], p1["lat"], p1["lon"])
+        cum_dist += d
+
+        if p0["ele"] is not None and p1["ele"] is not None:
+            diff = p1["ele"] - p0["ele"]
+            if diff > 0:
+                elevation_gain += diff
+            else:
+                elevation_loss += abs(diff)
+
+        if p1["speed"] is not None:
+            speeds.append(p1["speed"])
+        elif p0["time"] and p1["time"]:
+            dt = (p1["time"] - p0["time"]).total_seconds()
+            if dt > 0:
+                speeds.append(d / dt)
+
+        if p1["hr"] is not None:
+            hrs.append(p1["hr"])
+        if p1["cad"] is not None:
+            cads.append(p1["cad"])
+
+        time_s = (p1["time"] - t0).total_seconds() if (p1["time"] and t0) else None
+        tps.append({
+            "lat": round(p1["lat"], 6), "lon": round(p1["lon"], 6),
+            "ele": round(p1["ele"], 1) if p1["ele"] is not None else None,
+            "time_s": round(time_s, 1) if time_s is not None else None,
+            "dist_m": round(cum_dist, 1),
+            "hr": p1["hr"], "cad": p1["cad"], "speed": p1["speed"],
+        })
+
+    max_speed = max(speeds) if speeds else 0
+    times = [p["time"] for p in points if p["time"] is not None]
+    duration_s = (times[-1] - times[0]).total_seconds() if len(times) >= 2 else 0
+    avg_speed = cum_dist / duration_s if duration_s > 0 else 0
+    date_str = times[0].strftime("%Y-%m-%d") if times else ""
+
+    # Simplified coordinates for map overlay
+    step = max(1, len(points) // 200)
+    coord_list = [[round(p["lat"], 6), round(p["lon"], 6)] for p in points[::step]]
+
+    metrics = {
+        "date": date_str,
+        "duration_s": duration_s,
+        "distance_m": cum_dist,
+        "avg_speed_ms": avg_speed,
+        "max_speed_ms": max_speed,
+        "elevation_gain_m": elevation_gain,
+        "elevation_loss_m": elevation_loss,
+        "avg_hr": sum(hrs) / len(hrs) if hrs else None,
+        "max_hr": max(hrs) if hrs else None,
+        "avg_cadence": sum(cads) / len(cads) if cads else None,
+        "coordinates": json.dumps(coord_list),
+        "trackpoints": json.dumps(tps),
+    }
+
+    return metrics, tps, None
+
+
+# --------------- GPX Parsing ---------------
+
 def parse_gpx_content(xml_bytes, filename="unknown"):
     root = ET_fromstring(xml_bytes)
 
-    # Extract track_id from opentracks:trackid
     track_id = None
     for elem in root.iter():
         if strip_ns(elem.tag) == "trackid" and elem.text:
             track_id = elem.text.strip()
             break
 
-    # Track name
     trk_elems = find_all_recursive(root, "trk")
     if not trk_elems:
         return None, "No track found in GPX"
@@ -124,7 +208,6 @@ def parse_gpx_content(xml_bytes, filename="unknown"):
     name = get_text(trk, "name") or filename
     activity_type = get_text(trk, "type") or "running"
 
-    # Collect trackpoints
     trkpts = find_all_recursive(trk, "trkpt")
     if not trkpts:
         return None, "No trackpoints found"
@@ -136,128 +219,50 @@ def parse_gpx_content(xml_bytes, filename="unknown"):
         if lat is None or lon is None:
             continue
         lat, lon = float(lat), float(lon)
-
         ele_text = get_text(pt, "ele")
         ele = float(ele_text) if ele_text else None
+        time = parse_timestamp(get_text(pt, "time"))
 
-        time_text = get_text(pt, "time")
-        time = parse_timestamp(time_text)
-
-        # Extensions (Garmin TrackPointExtension)
-        hr = None
-        cad = None
-        speed = None
+        hr = cad = speed = None
         for ext in find_all_recursive(pt, "hr"):
             if ext.text:
-                hr = float(ext.text)
-                break
+                hr = float(ext.text); break
         for ext in find_all_recursive(pt, "cad"):
             if ext.text:
-                cad = float(ext.text)
-                break
+                cad = float(ext.text); break
         if cad is None:
             for ext in find_all_recursive(pt, "RunCadence"):
                 if ext.text:
-                    cad = float(ext.text)
-                    break
+                    cad = float(ext.text); break
         for ext in find_all_recursive(pt, "speed"):
             if ext.text:
-                speed = float(ext.text)
-                break
+                speed = float(ext.text); break
 
-        points.append({
-            "lat": lat, "lon": lon, "ele": ele, "time": time,
-            "hr": hr, "cad": cad, "speed": speed,
-        })
+        points.append({"lat": lat, "lon": lon, "ele": ele, "time": time,
+                        "hr": hr, "cad": cad, "speed": speed})
 
-    if len(points) < 2:
-        return None, "Not enough trackpoints"
-
-    # Calculate metrics
-    total_distance = 0.0
-    elevation_gain = 0.0
-    elevation_loss = 0.0
-    max_speed = 0.0
-    hrs = []
-    cads = []
-    speeds = []
-
-    for i in range(1, len(points)):
-        p0, p1 = points[i - 1], points[i]
-        d = haversine(p0["lat"], p0["lon"], p1["lat"], p1["lon"])
-        total_distance += d
-
-        if p0["ele"] is not None and p1["ele"] is not None:
-            diff = p1["ele"] - p0["ele"]
-            if diff > 0:
-                elevation_gain += diff
-            else:
-                elevation_loss += abs(diff)
-
-        # Speed from extensions or calculated
-        if p1["speed"] is not None:
-            speeds.append(p1["speed"])
-        elif p0["time"] and p1["time"]:
-            dt = (p1["time"] - p0["time"]).total_seconds()
-            if dt > 0:
-                speeds.append(d / dt)
-
-    for p in points:
-        if p["hr"] is not None:
-            hrs.append(p["hr"])
-        if p["cad"] is not None:
-            cads.append(p["cad"])
-
-    if speeds:
-        max_speed = max(speeds)
-
-    # Duration
-    times = [p["time"] for p in points if p["time"] is not None]
-    if len(times) >= 2:
-        duration_s = (times[-1] - times[0]).total_seconds()
-    else:
-        duration_s = 0
-
-    avg_speed = total_distance / duration_s if duration_s > 0 else 0
-    date_str = times[0].strftime("%Y-%m-%d") if times else ""
-
-    # Simplify coordinates for storage (every Nth point)
-    step = max(1, len(points) // 200)
-    coord_list = [[round(p["lat"], 6), round(p["lon"], 6)] for p in points[::step]]
+    metrics, tps, err = build_trackpoints_and_metrics(points)
+    if err:
+        return None, err
 
     track_data = {
-        "filename": filename,
-        "name": name,
-        "activity_type": activity_type,
-        "date": date_str,
-        "duration_s": duration_s,
-        "distance_m": total_distance,
-        "avg_speed_ms": avg_speed,
-        "max_speed_ms": max_speed,
-        "elevation_gain_m": elevation_gain,
-        "elevation_loss_m": elevation_loss,
-        "avg_hr": sum(hrs) / len(hrs) if hrs else None,
-        "max_hr": max(hrs) if hrs else None,
-        "avg_cadence": sum(cads) / len(cads) if cads else None,
-        "calories": None,
-        "track_id": track_id,
-        "coordinates": json.dumps(coord_list),
+        "filename": filename, "name": name, "activity_type": activity_type,
+        "calories": None, "track_id": track_id, **metrics,
     }
-
     return track_data, None
 
+
+# --------------- KML Parsing ---------------
 
 def parse_kml_content(xml_bytes, filename="unknown"):
     root = ET_fromstring(xml_bytes)
 
-    # Extract track_id from opentracks:trackid
     track_id = None
     for elem in root.iter():
         if strip_ns(elem.tag) == "trackid" and elem.text:
             track_id = elem.text.strip()
             break
 
-    # Find Placemark with Track
     placemarks = find_all_recursive(root, "Placemark")
     if not placemarks:
         return None, "No Placemark found in KML"
@@ -266,7 +271,6 @@ def parse_kml_content(xml_bytes, filename="unknown"):
     name_elem = find_child(pm, "name")
     name = name_elem.text.strip() if name_elem is not None and name_elem.text else filename
 
-    # Activity type from ExtendedData
     activity_type = "running"
     for data_elem in find_all_recursive(pm, "Data"):
         if data_elem.get("name") == "activityType":
@@ -275,7 +279,6 @@ def parse_kml_content(xml_bytes, filename="unknown"):
                 activity_type = val.text.strip()
                 break
 
-    # Collect <when> and <coord> from Track elements
     whens = []
     coords = []
     for track_elem in find_all_recursive(pm, "Track"):
@@ -289,7 +292,6 @@ def parse_kml_content(xml_bytes, filename="unknown"):
     if len(whens) != len(coords) or len(whens) < 2:
         return None, "Not enough trackpoints in KML"
 
-    # Parse SimpleArrayData for speed, heartrate, cadence
     array_data = {}
     for sad in find_all_recursive(root, "SimpleArrayData"):
         arr_name = sad.get("name")
@@ -303,120 +305,45 @@ def parse_kml_content(xml_bytes, filename="unknown"):
     hr_arr = array_data.get("heartrate", [])
     cad_arr = array_data.get("cadence", [])
 
-    # Build points
     points = []
     for i in range(len(whens)):
         time = parse_timestamp(whens[i])
         coord_parts = coords[i].split()
         if len(coord_parts) < 2:
-            points.append({"lat": None, "lon": None, "ele": None, "time": time,
-                           "hr": None, "cad": None, "speed": None})
             continue
 
-        lon = float(coord_parts[0])
-        lat = float(coord_parts[1])
+        lon, lat = float(coord_parts[0]), float(coord_parts[1])
         ele = float(coord_parts[2]) if len(coord_parts) >= 3 else None
 
-        speed = None
-        if i < len(speed_arr) and speed_arr[i]:
-            try:
-                speed = float(speed_arr[i])
-            except ValueError:
-                pass
-
-        hr = None
-        if i < len(hr_arr) and hr_arr[i]:
-            try:
-                hr = float(hr_arr[i])
-            except ValueError:
-                pass
-
-        cad = None
-        if i < len(cad_arr) and cad_arr[i]:
-            try:
-                cad = float(cad_arr[i])
-            except ValueError:
-                pass
+        def safe_float(arr, idx):
+            if idx < len(arr) and arr[idx]:
+                try:
+                    return float(arr[idx])
+                except ValueError:
+                    pass
+            return None
 
         points.append({
             "lat": lat, "lon": lon, "ele": ele, "time": time,
-            "hr": hr, "cad": cad, "speed": speed,
+            "hr": safe_float(hr_arr, i), "cad": safe_float(cad_arr, i),
+            "speed": safe_float(speed_arr, i),
         })
 
-    # Filter out points with no coordinates
-    valid_points = [p for p in points if p["lat"] is not None]
-    if len(valid_points) < 2:
+    if len(points) < 2:
         return None, "Not enough valid trackpoints"
 
-    # Calculate metrics (same logic as GPX)
-    total_distance = 0.0
-    elevation_gain = 0.0
-    elevation_loss = 0.0
-    hrs = []
-    cads = []
-    speeds = []
-
-    for i in range(1, len(valid_points)):
-        p0, p1 = valid_points[i - 1], valid_points[i]
-        d = haversine(p0["lat"], p0["lon"], p1["lat"], p1["lon"])
-        total_distance += d
-
-        if p0["ele"] is not None and p1["ele"] is not None:
-            diff = p1["ele"] - p0["ele"]
-            if diff > 0:
-                elevation_gain += diff
-            else:
-                elevation_loss += abs(diff)
-
-        if p1["speed"] is not None:
-            speeds.append(p1["speed"])
-        elif p0["time"] and p1["time"]:
-            dt = (p1["time"] - p0["time"]).total_seconds()
-            if dt > 0:
-                speeds.append(d / dt)
-
-    for p in valid_points:
-        if p["hr"] is not None:
-            hrs.append(p["hr"])
-        if p["cad"] is not None:
-            cads.append(p["cad"])
-
-    max_speed = max(speeds) if speeds else 0
-
-    times = [p["time"] for p in valid_points if p["time"] is not None]
-    if len(times) >= 2:
-        duration_s = (times[-1] - times[0]).total_seconds()
-    else:
-        duration_s = 0
-
-    avg_speed = total_distance / duration_s if duration_s > 0 else 0
-    date_str = times[0].strftime("%Y-%m-%d") if times else ""
-
-    # Simplify coordinates for storage
-    step = max(1, len(valid_points) // 200)
-    coord_list = [[round(p["lat"], 6), round(p["lon"], 6)] for p in valid_points[::step]]
+    metrics, tps, err = build_trackpoints_and_metrics(points)
+    if err:
+        return None, err
 
     track_data = {
-        "filename": filename,
-        "name": name,
-        "activity_type": activity_type,
-        "date": date_str,
-        "duration_s": duration_s,
-        "distance_m": total_distance,
-        "avg_speed_ms": avg_speed,
-        "max_speed_ms": max_speed,
-        "elevation_gain_m": elevation_gain,
-        "elevation_loss_m": elevation_loss,
-        "avg_hr": sum(hrs) / len(hrs) if hrs else None,
-        "max_hr": max(hrs) if hrs else None,
-        "avg_cadence": sum(cads) / len(cads) if cads else None,
-        "calories": None,
-        "track_id": track_id,
-        "coordinates": json.dumps(coord_list),
+        "filename": filename, "name": name, "activity_type": activity_type,
+        "calories": None, "track_id": track_id, **metrics,
     }
-
     return track_data, None
 
+
+# --------------- File processing ---------------
 
 def process_file(file_storage):
     filename = file_storage.filename or "unknown"
@@ -461,7 +388,6 @@ def process_file(file_storage):
             output.append((fname, False, err))
             continue
 
-        # Dedup
         if track_data["track_id"]:
             existing = Track.query.filter_by(track_id=track_data["track_id"]).first()
             if existing:
@@ -472,7 +398,6 @@ def process_file(file_storage):
         db.session.add(track)
         db.session.commit()
 
-        # Save file
         upload_path = os.path.join(DATA_DIR, "uploads", fname)
         os.makedirs(os.path.dirname(upload_path), exist_ok=True)
         with open(upload_path, "wb") as f:
@@ -481,6 +406,109 @@ def process_file(file_storage):
         output.append((fname, True, "OK"))
 
     return output
+
+
+# --------------- Splits & Records helpers ---------------
+
+def compute_splits(tps, split_m=1000):
+    """Compute splits from trackpoints list at every split_m meters."""
+    splits = []
+    seg_idx = 1
+    prev_dist = 0.0
+    prev_time = 0.0
+    prev_ele = tps[0].get("ele")
+    seg_hrs = []
+    split_km = split_m / 1000
+
+    for tp in tps:
+        dist = tp["dist_m"]
+        time_s = tp["time_s"]
+        if tp.get("hr") is not None:
+            seg_hrs.append(tp["hr"])
+
+        while dist >= seg_idx * split_m:
+            target = seg_idx * split_m
+            if dist > prev_dist:
+                ratio = (target - prev_dist) / (dist - prev_dist)
+            else:
+                ratio = 0
+            split_time = prev_time + ratio * ((time_s or 0) - prev_time)
+            split_dur = split_time - (splits[-1]["cum_time_s"] if splits else 0)
+            pace = (split_dur / 60) / split_km  # min/km
+
+            cur_ele = tp.get("ele")
+            if prev_ele is not None and cur_ele is not None:
+                ele_at_boundary = prev_ele + ratio * (cur_ele - prev_ele)
+            else:
+                ele_at_boundary = cur_ele
+
+            splits.append({
+                "km": round(seg_idx * split_km, 2),
+                "pace_min": round(pace, 2),
+                "duration_s": round(split_dur, 1),
+                "cum_time_s": round(split_time, 1),
+                "avg_hr": round(sum(seg_hrs) / len(seg_hrs)) if seg_hrs else None,
+                "ele": round(ele_at_boundary, 1) if ele_at_boundary is not None else None,
+            })
+            seg_hrs = []
+            seg_idx += 1
+
+        prev_dist = dist
+        prev_time = time_s or 0
+        prev_ele = tp.get("ele")
+
+    # Final partial segment
+    remaining_m = prev_dist - (seg_idx - 1) * split_m
+    if remaining_m > split_m * 0.1:  # only if > 10% of split distance
+        last_cum = splits[-1]["cum_time_s"] if splits else 0
+        split_dur = prev_time - last_cum
+        remaining_km = remaining_m / 1000
+        pace = (split_dur / 60) / remaining_km if remaining_km > 0 else 0
+        splits.append({
+            "km": round((seg_idx - 1) * split_km + remaining_km, 2),
+            "pace_min": round(pace, 2),
+            "duration_s": round(split_dur, 1),
+            "cum_time_s": round(prev_time, 1),
+            "avg_hr": round(sum(seg_hrs) / len(seg_hrs)) if seg_hrs else None,
+            "ele": round(prev_ele, 1) if prev_ele is not None else None,
+        })
+
+    return splits
+
+
+def compute_best_effort(tps, target_m):
+    """Find fastest pace over a continuous segment of target_m meters."""
+    if not tps or tps[-1]["dist_m"] < target_m:
+        return None
+
+    best_time = None
+    best_date_idx = 0
+    j = 0
+    for i in range(len(tps)):
+        while j < len(tps) and (tps[j]["dist_m"] - tps[i]["dist_m"]) < target_m:
+            j += 1
+        if j >= len(tps):
+            break
+        # Interpolate exact endpoint
+        d_needed = target_m - (tps[j - 1]["dist_m"] - tps[i]["dist_m"])
+        d_seg = tps[j]["dist_m"] - tps[j - 1]["dist_m"]
+        if d_seg > 0 and tps[j]["time_s"] is not None and tps[j - 1]["time_s"] is not None:
+            ratio = d_needed / d_seg
+            t_end = tps[j - 1]["time_s"] + ratio * (tps[j]["time_s"] - tps[j - 1]["time_s"])
+        else:
+            t_end = tps[j]["time_s"]
+
+        if t_end is not None and tps[i]["time_s"] is not None:
+            elapsed = t_end - tps[i]["time_s"]
+            if elapsed > 0 and (best_time is None or elapsed < best_time):
+                best_time = elapsed
+                best_date_idx = i
+
+    if best_time is None:
+        return None
+
+    pace = (best_time / 60) / (target_m / 1000)
+    return {"time_s": round(best_time, 1), "pace_min_km": round(pace, 2)}
 
 
 # --------------- Routes ---------------
@@ -544,42 +572,6 @@ def api_stats():
     return jsonify(result)
 
 
-@app.route("/api/summary")
-def api_summary():
-    tracks = Track.query.all()
-    if not tracks:
-        return jsonify({
-            "total_tracks": 0, "total_km": 0, "total_hours": 0,
-            "avg_pace": None, "best_pace": None, "longest_km": 0,
-        })
-
-    total_km = sum((t.distance_m or 0) / 1000 for t in tracks)
-    total_s = sum(t.duration_s or 0 for t in tracks)
-    total_hours = total_s / 3600
-
-    paces = []
-    longest = 0
-    for t in tracks:
-        dk = (t.distance_m or 0) / 1000
-        dm = (t.duration_s or 0) / 60
-        if dk > 0:
-            paces.append(dm / dk)
-        if dk > longest:
-            longest = dk
-
-    avg_pace = sum(paces) / len(paces) if paces else None
-    best_pace = min(paces) if paces else None
-
-    return jsonify({
-        "total_tracks": len(tracks),
-        "total_km": round(total_km, 2),
-        "total_hours": round(total_hours, 1),
-        "avg_pace": round(avg_pace, 2) if avg_pace else None,
-        "best_pace": round(best_pace, 2) if best_pace else None,
-        "longest_km": round(longest, 2),
-    })
-
-
 @app.route("/api/geo")
 def api_geo():
     tracks = Track.query.order_by(Track.date.asc()).all()
@@ -588,13 +580,89 @@ def api_geo():
         if not t.coordinates:
             continue
         result.append({
-            "id": t.id,
-            "name": t.name,
-            "date": t.date,
+            "id": t.id, "name": t.name, "date": t.date,
             "distance_km": round((t.distance_m or 0) / 1000, 2),
             "coordinates": json.loads(t.coordinates),
         })
     return jsonify(result)
+
+
+@app.route("/api/track/<int:tid>")
+def api_track_detail(tid):
+    t = Track.query.get_or_404(tid)
+    tps = json.loads(t.trackpoints) if t.trackpoints else []
+    split_m = request.args.get("split_m", 1000, type=int)
+    split_m = max(100, min(split_m, 10000))  # clamp 100m-10km
+    splits = compute_splits(tps, split_m) if tps else []
+
+    dist_km = (t.distance_m or 0) / 1000
+    duration_min = (t.duration_s or 0) / 60
+
+    return jsonify({
+        "id": t.id, "name": t.name, "date": t.date,
+        "distance_km": round(dist_km, 2),
+        "duration_min": round(duration_min, 2),
+        "pace_min_km": round(duration_min / dist_km, 2) if dist_km > 0 else None,
+        "elevation_gain": round(t.elevation_gain_m or 0, 1),
+        "elevation_loss": round(t.elevation_loss_m or 0, 1),
+        "avg_hr": round(t.avg_hr) if t.avg_hr else None,
+        "max_hr": round(t.max_hr) if t.max_hr else None,
+        "avg_cadence": round(t.avg_cadence) if t.avg_cadence else None,
+        "trackpoints": tps,
+        "splits": splits,
+    })
+
+
+@app.route("/api/records")
+def api_records():
+    tracks = Track.query.order_by(Track.date.asc()).all()
+    distances = [1000, 5000, 10000]
+    records = {}
+
+    for dist in distances:
+        key = f"{dist // 1000}km"
+        records[key] = None
+
+    # Best overall pace
+    best_pace = None
+    best_pace_track = None
+
+    for t in tracks:
+        if not t.trackpoints:
+            continue
+        tps = json.loads(t.trackpoints)
+
+        # Best efforts
+        for dist in distances:
+            key = f"{dist // 1000}km"
+            effort = compute_best_effort(tps, dist)
+            if effort:
+                if records[key] is None or effort["pace_min_km"] < records[key]["pace_min_km"]:
+                    records[key] = {**effort, "track_id": t.id, "track_name": t.name, "date": t.date}
+
+        # Best overall pace
+        dk = (t.distance_m or 0) / 1000
+        dm = (t.duration_s or 0) / 60
+        if dk > 0:
+            pace = dm / dk
+            if best_pace is None or pace < best_pace:
+                best_pace = pace
+                best_pace_track = {"pace_min_km": round(pace, 2), "track_id": t.id,
+                                   "track_name": t.name, "date": t.date}
+
+    # Longest run
+    longest = None
+    for t in tracks:
+        dk = (t.distance_m or 0) / 1000
+        if longest is None or dk > longest["distance_km"]:
+            longest = {"distance_km": round(dk, 2), "track_id": t.id,
+                        "track_name": t.name, "date": t.date}
+
+    return jsonify({
+        "best_efforts": records,
+        "best_pace": best_pace_track,
+        "longest_run": longest,
+    })
 
 
 if __name__ == "__main__":
