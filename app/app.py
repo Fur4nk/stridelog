@@ -1,4 +1,5 @@
 import os
+import json
 import math
 import zipfile
 import tempfile
@@ -38,10 +39,19 @@ class Track(db.Model):
     avg_cadence = db.Column(db.Float)
     calories = db.Column(db.Float)
     track_id = db.Column(db.String(256), unique=True)
+    coordinates = db.Column(db.Text)
 
 
 with app.app_context():
     db.create_all()
+    # Migration: add coordinates column if missing
+    from sqlalchemy import inspect as sa_inspect
+    inspector = sa_inspect(db.engine)
+    cols = [c["name"] for c in inspector.get_columns("track")]
+    if "coordinates" not in cols:
+        with db.engine.connect() as conn:
+            conn.execute(db.text("ALTER TABLE track ADD COLUMN coordinates TEXT"))
+            conn.commit()
 
 
 # --------------- GPX Parsing ---------------
@@ -211,6 +221,10 @@ def parse_gpx_content(xml_bytes, filename="unknown"):
     avg_speed = total_distance / duration_s if duration_s > 0 else 0
     date_str = times[0].strftime("%Y-%m-%d") if times else ""
 
+    # Simplify coordinates for storage (every Nth point)
+    step = max(1, len(points) // 200)
+    coord_list = [[round(p["lat"], 6), round(p["lon"], 6)] for p in points[::step]]
+
     track_data = {
         "filename": filename,
         "name": name,
@@ -227,6 +241,7 @@ def parse_gpx_content(xml_bytes, filename="unknown"):
         "avg_cadence": sum(cads) / len(cads) if cads else None,
         "calories": None,
         "track_id": track_id,
+        "coordinates": json.dumps(coord_list),
     }
 
     return track_data, None
@@ -377,6 +392,10 @@ def parse_kml_content(xml_bytes, filename="unknown"):
     avg_speed = total_distance / duration_s if duration_s > 0 else 0
     date_str = times[0].strftime("%Y-%m-%d") if times else ""
 
+    # Simplify coordinates for storage
+    step = max(1, len(valid_points) // 200)
+    coord_list = [[round(p["lat"], 6), round(p["lon"], 6)] for p in valid_points[::step]]
+
     track_data = {
         "filename": filename,
         "name": name,
@@ -393,6 +412,7 @@ def parse_kml_content(xml_bytes, filename="unknown"):
         "avg_cadence": sum(cads) / len(cads) if cads else None,
         "calories": None,
         "track_id": track_id,
+        "coordinates": json.dumps(coord_list),
     }
 
     return track_data, None
@@ -558,6 +578,23 @@ def api_summary():
         "best_pace": round(best_pace, 2) if best_pace else None,
         "longest_km": round(longest, 2),
     })
+
+
+@app.route("/api/geo")
+def api_geo():
+    tracks = Track.query.order_by(Track.date.asc()).all()
+    result = []
+    for t in tracks:
+        if not t.coordinates:
+            continue
+        result.append({
+            "id": t.id,
+            "name": t.name,
+            "date": t.date,
+            "distance_km": round((t.distance_m or 0) / 1000, 2),
+            "coordinates": json.loads(t.coordinates),
+        })
+    return jsonify(result)
 
 
 if __name__ == "__main__":
