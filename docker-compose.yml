@@ -1,0 +1,15 @@
+services:
+  stridelog:
+    build: .
+    container_name: stridelog
+    ports:
+      - "7842:5000"
+    volumes:
+      - stridelog_data:/data
+    environment:
+      - DATA_DIR=/data
+      - TZ=Europe/Rome
+    restart: unless-stopped
+
+volumes:
+  stridelog_data:
