@@ -777,7 +777,18 @@ function alpha(hex, a) {
 }
 function getChartColors() {
   const accent = getCSSVar('--accent'), secondary = getCSSVar('--secondary'), green = getCSSVar('--green');
-  return { accent, accentAlpha: alpha(accent,0.3), secondary, secondaryAlpha: alpha(secondary,0.3), green, greenAlpha: alpha(green,0.3) };
+  const yellow = getCSSVar('--yellow'), red = getCSSVar('--red');
+  const purple = '#a29bfe', orange = '#e17055', teal = '#00cec9';
+  return {
+    accent, accentAlpha: alpha(accent,0.3),
+    secondary, secondaryAlpha: alpha(secondary,0.3),
+    green, greenAlpha: alpha(green,0.3),
+    yellow, yellowAlpha: alpha(yellow,0.3),
+    red, redAlpha: alpha(red,0.3),
+    purple, purpleAlpha: alpha(purple,0.3),
+    orange, orangeAlpha: alpha(orange,0.3),
+    teal, tealAlpha: alpha(teal,0.3),
+  };
 }
 function getDefaultOpts() {
   const txtCol = getCSSVar('--chart-text'), gridCol = getCSSVar('--chart-grid');
@@ -855,7 +866,7 @@ function renderCharts() {
   });
   charts.paceHist = new Chart($('#chartPaceHist'), {
     type: 'bar',
-    data: { labels: bucketKeys, datasets: [{ label: 'runs', data: bucketKeys.map(k => paceBuckets[k]), backgroundColor: cc.secondaryAlpha, borderColor: cc.secondary, borderWidth: 1 }] },
+    data: { labels: bucketKeys, datasets: [{ label: 'runs', data: bucketKeys.map(k => paceBuckets[k]), backgroundColor: cc.purpleAlpha, borderColor: cc.purple, borderWidth: 1 }] },
     options: { ...opts, plugins: { ...opts.plugins, legend: { display: false } }, scales: { ...opts.scales, y: { ...opts.scales.y, ticks: { ...opts.scales.y.ticks, stepSize: 1 } } } },
   });
 
@@ -868,8 +879,8 @@ function renderCharts() {
       data: {
         labels,
         datasets: [
-          { label: 'Avg HR', data: statsData.map(r => r.avg_hr), borderColor: cc.accent, tension: 0.3, spanGaps: true },
-          { label: 'Max HR', data: statsData.map(r => r.max_hr), borderColor: cc.secondary, tension: 0.3, spanGaps: true },
+          { label: 'Avg HR', data: statsData.map(r => r.avg_hr), borderColor: cc.red, tension: 0.3, spanGaps: true },
+          { label: 'Max HR', data: statsData.map(r => r.max_hr), borderColor: cc.orange, tension: 0.3, spanGaps: true },
         ],
       },
       options: opts,
@@ -879,7 +890,7 @@ function renderCharts() {
   // Elevation Gain per run
   charts.elevGain = new Chart($('#chartElevGain'), {
     type: 'bar',
-    data: { labels, datasets: [{ label: 'm', data: statsData.map(r => r.elevation_gain), backgroundColor: cc.greenAlpha, borderColor: cc.green, borderWidth: 1 }] },
+    data: { labels, datasets: [{ label: 'm', data: statsData.map(r => r.elevation_gain), backgroundColor: cc.tealAlpha, borderColor: cc.teal, borderWidth: 1 }] },
     options: { ...opts, plugins: { ...opts.plugins, legend: { display: false } } },
   });
 
@@ -890,7 +901,7 @@ function renderCharts() {
       datasets: [{
         label: 'Runs',
         data: statsData.filter(r => r.pace_min_km).map(r => ({ x: r.distance_km, y: r.pace_min_km })),
-        backgroundColor: cc.accentAlpha, borderColor: cc.accent, pointRadius: 5, pointHoverRadius: 7,
+        backgroundColor: cc.yellowAlpha, borderColor: cc.yellow, pointRadius: 5, pointHoverRadius: 7,
       }],
     },
     options: {
@@ -911,7 +922,7 @@ function renderCharts() {
       datasets: [{
         label: 'Load',
         data: statsData.map(r => r.pace_min_km ? Math.round(r.distance_km * (60 / r.pace_min_km)) : 0),
-        backgroundColor: cc.secondaryAlpha, borderColor: cc.secondary, borderWidth: 1,
+        backgroundColor: cc.orangeAlpha, borderColor: cc.orange, borderWidth: 1,
       }],
     },
     options: { ...opts, plugins: { ...opts.plugins, legend: { display: false } } },
