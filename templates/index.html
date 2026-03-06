@@ -842,10 +842,11 @@ function renderCharts() {
     const key = sunday.toISOString().slice(0, 10);
     weekMap[key] = (weekMap[key] || 0) + r.distance_km;
   });
-  const weekLabels = Object.keys(weekMap).sort();
+  const weekKeys = Object.keys(weekMap).sort();
+  const weekLabels = weekKeys.map(k => { const d = new Date(k); return d.getDate() + ' ' + d.toLocaleString('default', { month: 'short' }); });
   charts.weekly = new Chart($('#chartWeekly'), {
     type: 'bar',
-    data: { labels: weekLabels, datasets: [{ label: 'km', data: weekLabels.map(w => Math.round(weekMap[w] * 100) / 100), backgroundColor: cc.greenAlpha, borderColor: cc.green, borderWidth: 1 }] },
+    data: { labels: weekLabels, datasets: [{ label: 'km', data: weekKeys.map(w => Math.round(weekMap[w] * 100) / 100), backgroundColor: cc.greenAlpha, borderColor: cc.green, borderWidth: 1 }] },
     options: { ...opts, plugins: { ...opts.plugins, legend: { display: false } } },
   });
 
