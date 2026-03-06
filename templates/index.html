@@ -317,7 +317,9 @@ h1 span { color: var(--accent); }
     <div class="chart-card"><h3>Weekly Distance (km)</h3><canvas id="chartWeekly"></canvas></div>
     <div class="chart-card"><h3>Pace Distribution</h3><canvas id="chartPaceHist"></canvas></div>
     <div class="chart-card" id="hrChartCard"><h3>Heart Rate</h3><canvas id="chartHR"></canvas></div>
-    <div class="chart-card full"><h3>Cumulative Distance (km)</h3><canvas id="chartCumulative"></canvas></div>
+    <div class="chart-card"><h3>Elevation Gain per Run (m)</h3><canvas id="chartElevGain"></canvas></div>
+    <div class="chart-card"><h3>Distance vs Pace</h3><canvas id="chartScatter"></canvas></div>
+    <div class="chart-card"><h3>Training Load</h3><canvas id="chartLoad"></canvas></div>
   </div>
 </div>
 
@@ -874,10 +876,44 @@ function renderCharts() {
     });
   }
 
-  // Cumulative km
-  charts.cumulative = new Chart($('#chartCumulative'), {
-    type: 'line',
-    data: { labels, datasets: [{ label: 'km', data: statsData.map(r => r.cumulative_km), borderColor: cc.green, backgroundColor: cc.greenAlpha, fill: true, tension: 0.3 }] },
+  // Elevation Gain per run
+  charts.elevGain = new Chart($('#chartElevGain'), {
+    type: 'bar',
+    data: { labels, datasets: [{ label: 'm', data: statsData.map(r => r.elevation_gain), backgroundColor: cc.greenAlpha, borderColor: cc.green, borderWidth: 1 }] },
+    options: { ...opts, plugins: { ...opts.plugins, legend: { display: false } } },
+  });
+
+  // Distance vs Pace scatter
+  charts.scatter = new Chart($('#chartScatter'), {
+    type: 'scatter',
+    data: {
+      datasets: [{
+        label: 'Runs',
+        data: statsData.filter(r => r.pace_min_km).map(r => ({ x: r.distance_km, y: r.pace_min_km })),
+        backgroundColor: cc.accentAlpha, borderColor: cc.accent, pointRadius: 5, pointHoverRadius: 7,
+      }],
+    },
+    options: {
+      ...opts,
+      plugins: { ...opts.plugins, legend: { display: false }, tooltip: { callbacks: { label: ctx => ctx.raw.x.toFixed(1) + ' km — ' + formatPace(ctx.raw.y) + '/km' } } },
+      scales: {
+        x: { ...opts.scales.x, title: { display: true, text: 'km', color: getCSSVar('--chart-text') } },
+        y: { ...opts.scales.y, reverse: true, title: { display: true, text: 'pace', color: getCSSVar('--chart-text') }, ticks: { ...opts.scales.y.ticks, callback: v => formatPace(v) } },
+      },
+    },
+  });
+
+  // Training Load: km * (60 / pace_min) — higher = more intense volume
+  charts.load = new Chart($('#chartLoad'), {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Load',
+        data: statsData.map(r => r.pace_min_km ? Math.round(r.distance_km * (60 / r.pace_min_km)) : 0),
+        backgroundColor: cc.secondaryAlpha, borderColor: cc.secondary, borderWidth: 1,
+      }],
+    },
     options: { ...opts, plugins: { ...opts.plugins, legend: { display: false } } },
   });
 }
