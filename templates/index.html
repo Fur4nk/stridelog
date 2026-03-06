@@ -127,14 +127,14 @@ h1 span { color: var(--accent); }
 .heatmap-container { background: var(--surface); border-radius: var(--radius); padding: 16px 16px 12px; margin-bottom: 24px; }
 .heatmap-container h3 { font-size: 0.9rem; color: var(--text-muted); margin-bottom: 10px; }
 .heatmap-wrap { overflow-x: auto; }
-.heatmap { display: flex; gap: var(--hm-gap, 3px); justify-content: space-between; }
-.heatmap-col { display: flex; flex-direction: column; gap: var(--hm-gap, 3px); flex: 1; }
-.heatmap-cell { aspect-ratio: 1; width: 100%; border-radius: 2px; background: var(--surface2); }
+.heatmap { display: grid; gap: var(--hm-gap, 3px); justify-content: start; }
+.heatmap-col { display: flex; flex-direction: column; gap: var(--hm-gap, 3px); }
+.heatmap-cell { width: var(--hm-size); height: var(--hm-size); border-radius: 2px; background: var(--surface2); }
 .heatmap-cell[data-level="1"] { background: color-mix(in srgb, var(--green) 30%, var(--surface2)); }
 .heatmap-cell[data-level="2"] { background: color-mix(in srgb, var(--green) 55%, var(--surface2)); }
 .heatmap-cell[data-level="3"] { background: color-mix(in srgb, var(--green) 80%, var(--surface2)); }
 .heatmap-cell[data-level="4"] { background: var(--green); }
-.heatmap-months { display: flex; font-size: 0.7rem; color: var(--text-muted); margin-bottom: 4px; position: relative; height: 16px; }
+.heatmap-months { display: grid; gap: var(--hm-gap, 3px); font-size: 0.7rem; color: var(--text-muted); margin-bottom: 4px; height: 16px; justify-content: start; }
 .heatmap-legend { display: flex; align-items: center; gap: 4px; margin-top: 8px; font-size: 0.7rem; color: var(--text-muted); justify-content: flex-end; }
 .heatmap-legend .heatmap-cell { width: 10px; height: 10px; flex: none; aspect-ratio: auto; }
 
@@ -1178,38 +1178,74 @@ function renderHeatmap() {
   container.innerHTML = '';
   monthsEl.innerHTML = '';
 
-  // Build date->km map from ALL data (not filtered)
+  // Build date->km map from filtered data
   const dateMap = {};
-  allStatsData.forEach(r => { dateMap[r.date] = (dateMap[r.date] || 0) + r.distance_km; });
+  statsData.forEach(r => { dateMap[r.date] = (dateMap[r.date] || 0) + r.distance_km; });
 
-  // Last 52 weeks + current partial week
+  // Determine date range based on period filter
+  const period = $('#periodFilter').value;
   const today = new Date();
-  const start = new Date(today);
-  start.setDate(start.getDate() - (52 * 7) - start.getDay());
+  let start, end;
+
+  if (period === 'month') {
+    start = new Date(today.getFullYear(), today.getMonth(), 1);
+    end = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+  } else if (period === 'quarter') {
+    const q = Math.floor(today.getMonth() / 3);
+    start = new Date(today.getFullYear(), q * 3, 1);
+    end = new Date(today.getFullYear(), q * 3 + 3, 0);
+  } else if (period === 'year') {
+    start = new Date(today.getFullYear(), 0, 1);
+    end = new Date(today.getFullYear(), 11, 31);
+  } else {
+    // "all" — last 52 weeks ending today
+    end = new Date(today);
+    start = new Date(today);
+    start.setDate(start.getDate() - (52 * 7));
+  }
+
+  // Align start to beginning of its week (Sunday)
+  start.setDate(start.getDate() - start.getDay());
+  // Align end to end of its week (Saturday)
+  if (end.getDay() < 6) end.setDate(end.getDate() + (6 - end.getDay()));
 
   // Find max km for scaling
   const allKm = Object.values(dateMap);
   const maxKm = allKm.length ? Math.max(...allKm) : 1;
 
-  const monthLabels = [];
-  let lastMonth = -1;
+  // Cell size: always based on 53 weeks fitting the container width
+  const totalWeeks = Math.ceil((end - start) / (7 * 86400000)) + 1;
+  const refWeeks = 53;
+  const gap = 3;
+  const wrapWidth = container.parentElement.clientWidth || 800;
+  const cellSize = Math.max(4, Math.floor((wrapWidth - (refWeeks - 1) * gap) / refWeeks));
+  container.style.setProperty('--hm-size', cellSize + 'px');
+  const colSize = cellSize + 'px';
+  const gridCols = `repeat(${totalWeeks}, ${colSize})`;
+  container.style.gridTemplateColumns = gridCols;
+  monthsEl.style.gridTemplateColumns = gridCols;
+
+  const monthLabelMap = {};  // pos -> label
+  let lastMonth = null;
   let weekCount = 0;
-  const cols = [];
 
   const d = new Date(start);
-  while (d <= today) {
+  while (d <= end) {
     const col = document.createElement('div');
     col.className = 'heatmap-col';
-    const wMonth = d.getMonth();
-    if (wMonth !== lastMonth) {
-      monthLabels.push({ month: d.toLocaleString('default', { month: 'short' }), pos: weekCount });
-      lastMonth = wMonth;
-    }
+    let colNewMonth = null;
     for (let dow = 0; dow < 7; dow++) {
       const cell = document.createElement('div');
       cell.className = 'heatmap-cell';
-      if (d <= today) {
-        const key = d.toISOString().slice(0, 10);
+      const key = d.toISOString().slice(0, 10);
+      const cellMonth = d.getMonth() + '-' + d.getFullYear();
+      if (d.getDate() === 1 && cellMonth !== lastMonth) {
+        colNewMonth = { month: d.toLocaleString('default', { month: 'short' }), key: cellMonth };
+      }
+      if (d > today) {
+        cell.style.opacity = '0.3';
+        cell.title = key;
+      } else {
         const km = dateMap[key] || 0;
         if (km > 0) {
           const ratio = km / maxKm;
@@ -1217,27 +1253,30 @@ function renderHeatmap() {
           cell.setAttribute('data-level', level);
           cell.title = `${key}: ${km.toFixed(1)} km`;
         } else {
-          cell.title = d.toISOString().slice(0, 10);
+          cell.title = key;
         }
-      } else {
-        cell.style.visibility = 'hidden';
       }
       col.appendChild(cell);
       d.setDate(d.getDate() + 1);
     }
+    if (colNewMonth) {
+      monthLabelMap[weekCount] = colNewMonth.month;
+      lastMonth = colNewMonth.key;
+    } else if (weekCount === 0) {
+      const firstMonth = new Date(start);
+      monthLabelMap[0] = firstMonth.toLocaleString('default', { month: 'short' });
+      lastMonth = firstMonth.getMonth() + '-' + firstMonth.getFullYear();
+    }
     container.appendChild(col);
-    cols.push(col);
     weekCount++;
   }
 
-  // Render month labels using percentage positions
-  monthLabels.forEach(ml => {
+  // Month labels: one div per grid column, text only where a month starts
+  for (let i = 0; i < weekCount; i++) {
     const span = document.createElement('span');
-    span.textContent = ml.month;
-    span.style.position = 'absolute';
-    span.style.left = ((ml.pos / weekCount) * 100) + '%';
+    span.textContent = monthLabelMap[i] || '';
     monthsEl.appendChild(span);
-  });
+  }
 }
 
 // --- Goals ---
