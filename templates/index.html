@@ -201,6 +201,11 @@ h1 span { color: var(--accent); }
 .data-menu-dropdown a:hover, .data-menu-dropdown label:hover { background: var(--surface2); color: var(--accent); }
 .data-menu-dropdown hr { border: none; border-top: 1px solid var(--border); margin: 0; }
 
+/* Manual form */
+.manual-label { display: block; font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.3px; margin-bottom: 4px; }
+.manual-input { width: 100%; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; color: var(--text); font-size: 0.85rem; font-family: inherit; }
+.manual-input:focus { outline: none; border-color: var(--accent); }
+
 /* Toast */
 .toast-container { position: fixed; bottom: 20px; right: 20px; z-index: 1000; }
 .toast { background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 20px; margin-top: 8px; font-size: 0.85rem; animation: slideIn 0.3s ease; }
@@ -223,6 +228,7 @@ h1 span { color: var(--accent); }
   <h1><span>Stride</span>Log</h1>
   <div class="header-actions">
     <button class="btn-import" id="btnImport">+ Import</button>
+    <button class="btn-import" id="btnManual">+ Manual</button>
     <input type="file" id="fileInput" multiple accept=".gpx,.kmz,.kml" hidden>
     <div class="data-menu">
       <button class="data-menu-btn" id="dataMenuBtn" title="Data">&#9776; Data</button>
@@ -438,6 +444,72 @@ h1 span { color: var(--accent); }
   </div>
 </div>
 
+<!-- Manual Workout Modal -->
+<div class="modal-overlay" id="manualModal">
+  <div class="modal" style="max-width:500px">
+    <button class="modal-close" onclick="closeManual()">&times;</button>
+    <h2>Add Manual Workout</h2>
+    <div style="display:grid;gap:12px;margin-top:16px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div>
+          <label class="manual-label">Date *</label>
+          <input type="date" id="manDate" class="manual-input">
+        </div>
+        <div>
+          <label class="manual-label">Activity Type</label>
+          <select id="manType" class="manual-input">
+            <option value="running">Running</option>
+            <option value="cycling">Cycling</option>
+            <option value="walking">Walking</option>
+            <option value="hiking">Hiking</option>
+            <option value="trail_running">Trail Running</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+      </div>
+      <div>
+        <label class="manual-label">Name</label>
+        <input type="text" id="manName" class="manual-input" placeholder="Morning run...">
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div>
+          <label class="manual-label">Distance (km) *</label>
+          <input type="number" id="manDistance" class="manual-input" step="0.01" min="0">
+        </div>
+        <div>
+          <label class="manual-label">Duration (min) *</label>
+          <input type="number" id="manDuration" class="manual-input" step="0.1" min="0">
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div>
+          <label class="manual-label">Elevation D+ (m)</label>
+          <input type="number" id="manElevGain" class="manual-input" step="1" min="0">
+        </div>
+        <div>
+          <label class="manual-label">Elevation D- (m)</label>
+          <input type="number" id="manElevLoss" class="manual-input" step="1" min="0">
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div>
+          <label class="manual-label">Avg HR</label>
+          <input type="number" id="manAvgHR" class="manual-input" min="0">
+        </div>
+        <div>
+          <label class="manual-label">Calories</label>
+          <input type="number" id="manCalories" class="manual-input" min="0">
+        </div>
+      </div>
+      <div>
+        <label class="manual-label">Notes</label>
+        <textarea id="manNotes" class="manual-input" style="resize:vertical;min-height:50px" placeholder="Optional notes..."></textarea>
+      </div>
+      <button id="manSave" style="background:var(--accent);border:none;color:#fff;border-radius:var(--radius);padding:10px;cursor:pointer;font-size:0.9rem;font-weight:600;margin-top:4px">Save Workout</button>
+    </div>
+  </div>
+</div>
+
 <!-- Drop overlay -->
 <div class="drop-overlay" id="dropOverlay"><div class="drop-overlay-inner">Drop GPX/KMZ files to import</div></div>
 
@@ -472,6 +544,50 @@ $('#restoreInput').addEventListener('change', async function() {
     else toast('Restore failed: ' + (data.error || 'Unknown error'));
   } catch (e) { toast('Restore failed: ' + e.message); }
   this.value = '';
+});
+
+// --- Manual Workout ---
+$('#btnManual').addEventListener('click', () => {
+  $('#manDate').value = new Date().toISOString().slice(0, 10);
+  $('#manualModal').classList.add('active');
+});
+function closeManual() { $('#manualModal').classList.remove('active'); }
+$('#manualModal').addEventListener('click', e => { if (e.target === $('#manualModal')) closeManual(); });
+
+$('#manSave').addEventListener('click', async () => {
+  const data = {
+    date: $('#manDate').value,
+    name: $('#manName').value,
+    activity_type: $('#manType').value,
+    distance_km: parseFloat($('#manDistance').value) || 0,
+    duration_min: parseFloat($('#manDuration').value) || 0,
+    elevation_gain: parseFloat($('#manElevGain').value) || 0,
+    elevation_loss: parseFloat($('#manElevLoss').value) || 0,
+    avg_hr: $('#manAvgHR').value || null,
+    calories: $('#manCalories').value || null,
+    notes: $('#manNotes').value,
+  };
+  if (!data.date || !data.distance_km || !data.duration_min) {
+    toast('Date, distance and duration are required');
+    return;
+  }
+  try {
+    const res = await fetch('/api/track/manual', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    const result = await res.json();
+    if (result.ok) {
+      toast('Workout added');
+      closeManual();
+      // Reset form
+      ['#manName','#manDistance','#manDuration','#manElevGain','#manElevLoss','#manAvgHR','#manCalories','#manNotes'].forEach(s => $(s).value = '');
+      loadData();
+    } else {
+      toast(result.error || 'Error saving workout');
+    }
+  } catch (e) { toast('Error: ' + e.message); }
 });
 
 // --- Sport helpers ---

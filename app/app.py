@@ -537,6 +537,47 @@ def upload():
     return jsonify({"results": [[r[0], r[1], r[2]] for r in all_results]})
 
 
+@app.route("/api/track/manual", methods=["POST"])
+def add_manual():
+    d = request.get_json(force=True)
+    date = d.get("date")
+    name = d.get("name") or "Manual workout"
+    activity_type = d.get("activity_type") or "running"
+    distance_km = float(d.get("distance_km") or 0)
+    duration_min = float(d.get("duration_min") or 0)
+    if distance_km <= 0 or duration_min <= 0:
+        return jsonify({"error": "Distance and duration are required"}), 400
+    if not date:
+        return jsonify({"error": "Date is required"}), 400
+
+    distance_m = distance_km * 1000
+    duration_s = duration_min * 60
+    avg_speed_ms = distance_m / duration_s if duration_s > 0 else 0
+    pace = duration_min / distance_km if distance_km > 0 else 0
+
+    track = Track(
+        filename="manual",
+        name=name,
+        activity_type=activity_type,
+        date=date,
+        duration_s=duration_s,
+        distance_m=distance_m,
+        avg_speed_ms=avg_speed_ms,
+        max_speed_ms=avg_speed_ms,
+        elevation_gain_m=float(d.get("elevation_gain") or 0),
+        elevation_loss_m=float(d.get("elevation_loss") or 0),
+        avg_hr=float(d.get("avg_hr")) if d.get("avg_hr") else None,
+        max_hr=float(d.get("max_hr")) if d.get("max_hr") else None,
+        avg_cadence=float(d.get("avg_cadence")) if d.get("avg_cadence") else None,
+        calories=float(d.get("calories")) if d.get("calories") else None,
+        tags=d.get("tags") or "",
+        notes=d.get("notes") or "",
+    )
+    db.session.add(track)
+    db.session.commit()
+    return jsonify({"ok": True, "id": track.id})
+
+
 @app.route("/delete/<int:track_id>", methods=["POST"])
 def delete_track(track_id):
     track = Track.query.get_or_404(track_id)
