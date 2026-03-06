@@ -318,7 +318,7 @@ h1 span { color: var(--accent); }
     <div class="chart-card"><h3>Distance vs Pace</h3><canvas id="chartScatter"></canvas></div>
     <div class="chart-card"><h3>Distance per Run (km)</h3><canvas id="chartDistance"></canvas></div>
     <div class="chart-card"><h3>Pace Distribution</h3><canvas id="chartPaceHist"></canvas></div>
-    <div class="chart-card"><h3>Elevation Gain per Run (m)</h3><canvas id="chartElevGain"></canvas></div>
+    <div class="chart-card"><h3>Elevation Gain / Loss (m)</h3><canvas id="chartElevGainLoss"></canvas></div>
     <div class="chart-card" id="hrChartCard"><h3>Heart Rate</h3><canvas id="chartHR"></canvas></div>
   </div>
 </div>
@@ -888,11 +888,18 @@ function renderCharts() {
     });
   }
 
-  // Elevation Gain per run
-  charts.elevGain = new Chart($('#chartElevGain'), {
+  // Elevation Gain / Loss (stacked on same column)
+  charts.elevGainLoss = new Chart($('#chartElevGainLoss'), {
     type: 'bar',
-    data: { labels, datasets: [{ label: 'm', data: statsData.map(r => r.elevation_gain), backgroundColor: cc.tealAlpha, borderColor: cc.teal, borderWidth: 1 }] },
-    options: { ...opts, plugins: { ...opts.plugins, legend: { display: false } } },
+    data: {
+      labels,
+      datasets: [
+        { label: 'D+', data: statsData.map(r => r.elevation_gain), backgroundColor: cc.tealAlpha, borderColor: cc.teal, borderWidth: 1, stack: 'elev' },
+        { label: 'D-', data: statsData.map(r => -(r.elevation_loss || 0)), backgroundColor: cc.orangeAlpha, borderColor: cc.orange, borderWidth: 1, stack: 'elev' },
+      ],
+    },
+    options: { ...opts, plugins: { ...opts.plugins, tooltip: { callbacks: { label: ctx => ctx.dataset.label + ': ' + Math.abs(ctx.raw) + ' m' } } },
+      scales: { ...opts.scales, x: { ...opts.scales.x, stacked: true }, y: { ...opts.scales.y, stacked: true, ticks: { ...opts.scales.y.ticks, callback: v => Math.abs(v) } } } },
   });
 
   // Distance vs Pace scatter

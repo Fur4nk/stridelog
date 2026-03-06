@@ -569,6 +569,7 @@ def api_stats():
             "avg_speed_kmh": round(avg_speed_kmh, 2),
             "max_speed_kmh": round(max_speed_kmh, 2),
             "elevation_gain": round(t.elevation_gain_m or 0, 1),
+            "elevation_loss": round(t.elevation_loss_m or 0, 1),
             "avg_hr": round(t.avg_hr) if t.avg_hr else None,
             "max_hr": round(t.max_hr) if t.max_hr else None,
             "avg_cadence": round(t.avg_cadence) if t.avg_cadence else None,
