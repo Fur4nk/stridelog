@@ -669,53 +669,96 @@ def api_track_detail(tid):
 @app.route("/api/records")
 def api_records():
     tracks = Track.query.order_by(Track.date.asc()).all()
-    distances = [1000, 5000, 10000]
-    records = {}
 
-    for dist in distances:
-        key = f"{dist // 1000}km"
-        records[key] = None
+    effort_distances = {
+        "running": [1000, 5000, 10000, 21097, 42195],
+        "trail_running": [1000, 5000, 10000],
+        "cycling": [5000, 10000, 20000, 50000, 100000],
+        "walking": [1000, 5000, 10000],
+        "hiking": [1000, 5000, 10000],
+    }
+    effort_labels = {
+        1000: "1km", 5000: "5km", 10000: "10km",
+        20000: "20km", 21097: "Half Marathon", 42195: "Marathon",
+        50000: "50km", 100000: "100km",
+    }
 
-    # Best overall pace
-    best_pace = None
-    best_pace_track = None
-
+    # Group tracks by sport
+    by_sport = {}
     for t in tracks:
-        if not t.trackpoints:
-            continue
-        tps = json.loads(t.trackpoints)
+        sport = t.activity_type or "running"
+        by_sport.setdefault(sport, []).append(t)
 
-        # Best efforts
-        for dist in distances:
-            key = f"{dist // 1000}km"
-            effort = compute_best_effort(tps, dist)
-            if effort:
-                if records[key] is None or effort["pace_min_km"] < records[key]["pace_min_km"]:
-                    records[key] = {**effort, "track_id": t.id, "track_name": t.name, "date": t.date}
+    all_sports = sorted(by_sport.keys())
+    result = {}
 
-        # Best overall pace
-        dk = (t.distance_m or 0) / 1000
-        dm = (t.duration_s or 0) / 60
-        if dk > 0:
-            pace = dm / dk
-            if best_pace is None or pace < best_pace:
-                best_pace = pace
-                best_pace_track = {"pace_min_km": round(pace, 2), "track_id": t.id,
-                                   "track_name": t.name, "date": t.date}
+    for sport, sport_tracks in by_sport.items():
+        distances = effort_distances.get(sport, [1000, 5000, 10000])
+        best_efforts = {}
+        best_pace = None
+        best_speed = None
+        longest = None
+        most_elevation = None
+        longest_duration = None
 
-    # Longest run
-    longest = None
-    for t in tracks:
-        dk = (t.distance_m or 0) / 1000
-        if longest is None or dk > longest["distance_km"]:
-            longest = {"distance_km": round(dk, 2), "track_id": t.id,
-                        "track_name": t.name, "date": t.date}
+        for t in sport_tracks:
+            dk = (t.distance_m or 0) / 1000
+            dm = (t.duration_s or 0) / 60
 
-    return jsonify({
-        "best_efforts": records,
-        "best_pace": best_pace_track,
-        "longest_run": longest,
-    })
+            # Best efforts (only for tracks with trackpoints)
+            if t.trackpoints:
+                tps = json.loads(t.trackpoints)
+                for dist in distances:
+                    key = effort_labels.get(dist, f"{dist // 1000}km")
+                    effort = compute_best_effort(tps, dist)
+                    if effort:
+                        if key not in best_efforts or effort["pace_min_km"] < best_efforts[key]["pace_min_km"]:
+                            best_efforts[key] = {
+                                **effort, "track_id": t.id,
+                                "track_name": t.name, "date": t.date,
+                            }
+
+            # Best pace
+            if dk > 0:
+                pace = dm / dk
+                if best_pace is None or pace < best_pace["pace_min_km"]:
+                    best_pace = {"pace_min_km": round(pace, 2), "track_id": t.id,
+                                 "track_name": t.name, "date": t.date}
+
+            # Best avg speed
+            if dk > 0 and dm > 0:
+                speed = dk / (dm / 60)
+                if best_speed is None or speed > best_speed["speed_kmh"]:
+                    best_speed = {"speed_kmh": round(speed, 1), "track_id": t.id,
+                                  "track_name": t.name, "date": t.date}
+
+            # Longest distance
+            if longest is None or dk > longest["distance_km"]:
+                longest = {"distance_km": round(dk, 2), "track_id": t.id,
+                           "track_name": t.name, "date": t.date}
+
+            # Most elevation gain
+            eg = t.elevation_gain_m or 0
+            if eg > 0 and (most_elevation is None or eg > most_elevation["elevation_m"]):
+                most_elevation = {"elevation_m": round(eg, 1), "track_id": t.id,
+                                  "track_name": t.name, "date": t.date}
+
+            # Longest duration
+            ds = t.duration_s or 0
+            if ds > 0 and (longest_duration is None or ds > longest_duration["duration_s"]):
+                longest_duration = {"duration_s": round(ds, 1), "track_id": t.id,
+                                    "track_name": t.name, "date": t.date}
+
+        result[sport] = {
+            "best_efforts": best_efforts,
+            "best_pace": best_pace,
+            "best_speed": best_speed,
+            "longest": longest,
+            "most_elevation": most_elevation,
+            "longest_duration": longest_duration,
+        }
+
+    return jsonify({"sports": all_sports, "records": result})
 
 
 @app.route("/api/track/<int:tid>", methods=["PUT"])

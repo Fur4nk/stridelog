@@ -72,9 +72,10 @@ h1 span { color: var(--accent); }
 /* Tabs */
 .tabs { display: flex; gap: 0; margin-bottom: 20px; }
 .tab-btn { background: var(--surface); border: 1px solid var(--border); padding: 10px 24px; cursor: pointer; color: var(--text-muted); font-size: 0.9rem; transition: all 0.2s; }
-.tab-btn:first-child { border-radius: var(--radius) 0 0 var(--radius); border-right: none; }
-.tab-btn:last-child { border-radius: 0 var(--radius) var(--radius) 0; border-left: none; }
-.tab-btn:not(:first-child):not(:last-child) { border-radius: 0; border-right: none; }
+.tab-btn:first-child { border-radius: var(--radius) 0 0 var(--radius); }
+.tab-btn:last-child { border-radius: 0 var(--radius) var(--radius) 0; }
+.tab-btn:not(:first-child):not(:last-child) { border-radius: 0; }
+.tab-btn + .tab-btn { margin-left: -1px; }
 .tab-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
 .tab-content { display: none; }
 .tab-content.active { display: block; }
@@ -166,6 +167,9 @@ h1 span { color: var(--accent); }
 .record-card .rc-label { font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
 .record-card .rc-value { font-size: 1.4rem; font-weight: 700; margin: 2px 0; }
 .record-card .rc-detail { font-size: 0.75rem; color: var(--text-muted); }
+.rec-tab { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 4px 12px; cursor: pointer; font-size: 0.8rem; color: var(--text-muted); transition: all 0.2s; }
+.rec-tab:hover { border-color: var(--accent); color: var(--accent); }
+.rec-tab.active { background: var(--accent); border-color: var(--accent); color: #fff; }
 
 /* Compare */
 .compare-bar { display: none; align-items: center; gap: 12px; padding: 10px 16px; background: var(--surface); border: 1px solid var(--accent); border-radius: var(--radius); margin-bottom: 16px; }
@@ -228,7 +232,7 @@ h1 span { color: var(--accent); }
   <h1><span>Stride</span>Log</h1>
   <div class="header-actions">
     <button class="btn-import" id="btnImport">+ Import</button>
-    <button class="btn-import" id="btnManual">+ Manual</button>
+    <button class="btn-import" id="btnManual" onclick="openManual()">+ Manual</button>
     <input type="file" id="fileInput" multiple accept=".gpx,.kmz,.kml" hidden>
     <div class="data-menu">
       <button class="data-menu-btn" id="dataMenuBtn" title="Data">&#9776; Data</button>
@@ -297,7 +301,7 @@ h1 span { color: var(--accent); }
   <div class="card"><div class="label">Longest Run</div><div class="value" id="sLongest">-</div></div>
 </div>
 
-<!-- Personal Records -->
+<!-- Personal Records (homepage summary) -->
 <div class="records-row" id="recordsRow"></div>
 
 <!-- Calendar Heatmap -->
@@ -313,6 +317,7 @@ h1 span { color: var(--accent); }
   <button class="tab-btn active" data-tab="charts">Charts</button>
   <button class="tab-btn" data-tab="map">Map</button>
   <button class="tab-btn" data-tab="table">Table</button>
+  <button class="tab-btn" data-tab="records">Records</button>
 </div>
 
 <!-- Charts Tab -->
@@ -365,6 +370,14 @@ h1 span { color: var(--accent); }
     <tbody id="tableBody"></tbody>
   </table>
   <div class="empty-state" id="emptyState">No workouts yet. Upload some GPX files to get started.</div>
+</div>
+
+<!-- Records Tab -->
+<div class="tab-content" id="tab-records">
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap">
+    <div id="recordsSportTabs" style="display:flex;gap:4px;flex-wrap:wrap"></div>
+  </div>
+  <div class="records-row" id="recordsDetailRow"></div>
 </div>
 
 <!-- Detail Modal -->
@@ -439,7 +452,8 @@ h1 span { color: var(--accent); }
     <div class="detail-grid" style="margin-top:16px">
       <div class="chart-card"><h3>Elevation Profile</h3><canvas id="compareElevation"></canvas></div>
       <div class="chart-card" id="compareMapWrap"><h3>Route Overlay</h3>
-      <div id="compareMap" style="height:350px;border-radius:var(--radius)"></div>
+        <div id="compareMap" style="height:350px;border-radius:var(--radius)"></div>
+      </div>
     </div>
   </div>
 </div>
@@ -547,10 +561,10 @@ $('#restoreInput').addEventListener('change', async function() {
 });
 
 // --- Manual Workout ---
-$('#btnManual').addEventListener('click', () => {
+function openManual() {
   $('#manDate').value = new Date().toISOString().slice(0, 10);
   $('#manualModal').classList.add('active');
-});
+}
 function closeManual() { $('#manualModal').classList.remove('active'); }
 $('#manualModal').addEventListener('click', e => { if (e.target === $('#manualModal')) closeManual(); });
 
@@ -1054,12 +1068,87 @@ function renderCharts() {
 }
 
 // --- Records ---
-function renderRecords(rec) {
+let allRecordsData = null;
+let currentRecordSport = null;
+
+// Homepage simple records (cross-sport)
+function renderRecords(data) {
   const row = $('#recordsRow');
-  if (!rec.best_pace && !rec.longest_run) { row.innerHTML = ''; return; }
+  if (!data.sports || !data.sports.length) { row.innerHTML = ''; return; }
+
+  allRecordsData = data;
+
+  // Merge best efforts across all sports
+  const allEfforts = {};
+  const targetEfforts = ['1km', '5km', '10km'];
+  let bestPace = null;
+  let longest = null;
+
+  for (const rec of Object.values(data.records)) {
+    for (const key of targetEfforts) {
+      const val = (rec.best_efforts || {})[key];
+      if (val && (!allEfforts[key] || val.pace_min_km < allEfforts[key].pace_min_km)) {
+        allEfforts[key] = val;
+      }
+    }
+    if (rec.best_pace && (!bestPace || rec.best_pace.pace_min_km < bestPace.pace_min_km)) {
+      bestPace = rec.best_pace;
+    }
+    if (rec.longest && (!longest || rec.longest.distance_km > longest.distance_km)) {
+      longest = rec.longest;
+    }
+  }
+
   let html = '';
-  const efforts = rec.best_efforts || {};
-  for (const [key, val] of Object.entries(efforts)) {
+  for (const key of targetEfforts) {
+    const val = allEfforts[key];
+    if (val) {
+      html += `<div class="record-card"><div class="rc-label">Best ${key}</div>
+        <div class="rc-value">${formatPace(val.pace_min_km)}/km</div>
+        <div class="rc-detail">${formatDuration(val.time_s / 60)} &mdash; ${val.date}</div></div>`;
+    }
+  }
+  if (bestPace) {
+    html += `<div class="record-card"><div class="rc-label">Best Pace</div>
+      <div class="rc-value">${formatPace(bestPace.pace_min_km)}/km</div>
+      <div class="rc-detail">${bestPace.date}</div></div>`;
+  }
+  if (longest) {
+    html += `<div class="record-card"><div class="rc-label">Longest</div>
+      <div class="rc-value">${longest.distance_km} km</div>
+      <div class="rc-detail">${longest.date}</div></div>`;
+  }
+  row.innerHTML = html;
+}
+
+// Records tab — detailed per-sport view
+function renderRecordsTab() {
+  if (!allRecordsData) return;
+  const data = allRecordsData;
+  const tabsEl = $('#recordsSportTabs');
+  const row = $('#recordsDetailRow');
+
+  if (!data.sports.length) { row.innerHTML = '<div class="empty-state">No records yet.</div>'; return; }
+  if (!currentRecordSport || !data.records[currentRecordSport]) currentRecordSport = data.sports[0];
+
+  // Sport tabs
+  tabsEl.innerHTML = data.sports.map(s =>
+    `<button class="rec-tab ${s === currentRecordSport ? 'active' : ''}" data-sport="${s}">${sportLabel(s)}</button>`
+  ).join('');
+  tabsEl.querySelectorAll('.rec-tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      currentRecordSport = btn.dataset.sport;
+      renderRecordsTab();
+    });
+  });
+
+  const rec = data.records[currentRecordSport];
+  if (!rec) { row.innerHTML = ''; return; }
+
+  let html = '';
+
+  // Best efforts
+  for (const [key, val] of Object.entries(rec.best_efforts || {})) {
     if (val) {
       html += `<div class="record-card"><div class="rc-label">Best ${key}</div>
         <div class="rc-value">${formatPace(val.pace_min_km)}/km</div>
@@ -1071,10 +1160,25 @@ function renderRecords(rec) {
       <div class="rc-value">${formatPace(rec.best_pace.pace_min_km)}/km</div>
       <div class="rc-detail">${rec.best_pace.date}</div></div>`;
   }
-  if (rec.longest_run) {
-    html += `<div class="record-card"><div class="rc-label">Longest Run</div>
-      <div class="rc-value">${rec.longest_run.distance_km} km</div>
-      <div class="rc-detail">${rec.longest_run.date}</div></div>`;
+  if (rec.best_speed) {
+    html += `<div class="record-card"><div class="rc-label">Best Avg Speed</div>
+      <div class="rc-value">${rec.best_speed.speed_kmh} km/h</div>
+      <div class="rc-detail">${rec.best_speed.date}</div></div>`;
+  }
+  if (rec.longest) {
+    html += `<div class="record-card"><div class="rc-label">Longest Distance</div>
+      <div class="rc-value">${rec.longest.distance_km} km</div>
+      <div class="rc-detail">${rec.longest.date}</div></div>`;
+  }
+  if (rec.most_elevation) {
+    html += `<div class="record-card"><div class="rc-label">Most Elevation</div>
+      <div class="rc-value">${rec.most_elevation.elevation_m} m</div>
+      <div class="rc-detail">${rec.most_elevation.date}</div></div>`;
+  }
+  if (rec.longest_duration) {
+    html += `<div class="record-card"><div class="rc-label">Longest Duration</div>
+      <div class="rc-value">${formatDuration(rec.longest_duration.duration_s / 60)}</div>
+      <div class="rc-detail">${rec.longest_duration.date}</div></div>`;
   }
   row.innerHTML = html;
 }
@@ -1569,6 +1673,9 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
         if (leafletMap) { leafletMap.invalidateSize(); renderMap(); }
         else renderMap();
       }, 100);
+    }
+    if (btn.dataset.tab === 'records') {
+      renderRecordsTab();
     }
   });
 });
