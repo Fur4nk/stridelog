@@ -1,12 +1,15 @@
 import os
+import io
+import csv
 import json
 import math
+import shutil
 import zipfile
 import tempfile
 from datetime import datetime, timezone
 from xml.etree.ElementTree import parse as ET_parse, fromstring as ET_fromstring
 
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, Response, send_file
 from flask_sqlalchemy import SQLAlchemy
 
 app = Flask(__name__, template_folder="../templates", static_folder="../static")
@@ -41,6 +44,8 @@ class Track(db.Model):
     track_id = db.Column(db.String(256), unique=True)
     coordinates = db.Column(db.Text)
     trackpoints = db.Column(db.Text)
+    tags = db.Column(db.Text)        # comma-separated tags
+    notes = db.Column(db.Text)       # free-text notes
 
 
 with app.app_context():
@@ -48,7 +53,7 @@ with app.app_context():
     from sqlalchemy import inspect as sa_inspect
     inspector = sa_inspect(db.engine)
     cols = [c["name"] for c in inspector.get_columns("track")]
-    for col_name in ("coordinates", "trackpoints"):
+    for col_name in ("coordinates", "trackpoints", "tags", "notes"):
         if col_name not in cols:
             with db.engine.connect() as conn:
                 conn.execute(db.text(f"ALTER TABLE track ADD COLUMN {col_name} TEXT"))
@@ -557,6 +562,7 @@ def api_stats():
             "id": t.id,
             "date": t.date,
             "name": t.name,
+            "activity_type": t.activity_type or "running",
             "distance_km": round(dist_km, 2),
             "duration_min": round(duration_min, 2),
             "pace_min_km": round(pace, 2) if pace else None,
@@ -567,6 +573,8 @@ def api_stats():
             "max_hr": round(t.max_hr) if t.max_hr else None,
             "avg_cadence": round(t.avg_cadence) if t.avg_cadence else None,
             "cumulative_km": round(cumulative, 2),
+            "tags": t.tags or "",
+            "notes": t.notes or "",
         })
 
     return jsonify(result)
@@ -600,6 +608,7 @@ def api_track_detail(tid):
 
     return jsonify({
         "id": t.id, "name": t.name, "date": t.date,
+        "activity_type": t.activity_type or "running",
         "distance_km": round(dist_km, 2),
         "duration_min": round(duration_min, 2),
         "pace_min_km": round(duration_min / dist_km, 2) if dist_km > 0 else None,
@@ -608,6 +617,8 @@ def api_track_detail(tid):
         "avg_hr": round(t.avg_hr) if t.avg_hr else None,
         "max_hr": round(t.max_hr) if t.max_hr else None,
         "avg_cadence": round(t.avg_cadence) if t.avg_cadence else None,
+        "tags": t.tags or "",
+        "notes": t.notes or "",
         "trackpoints": tps,
         "splits": splits,
     })
@@ -663,6 +674,113 @@ def api_records():
         "best_pace": best_pace_track,
         "longest_run": longest,
     })
+
+
+@app.route("/api/track/<int:tid>", methods=["PUT"])
+def api_track_update(tid):
+    t = Track.query.get_or_404(tid)
+    data = request.get_json(force=True)
+    if "tags" in data:
+        t.tags = data["tags"]
+    if "notes" in data:
+        t.notes = data["notes"]
+    if "activity_type" in data:
+        t.activity_type = data["activity_type"]
+    db.session.commit()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/export/csv")
+def export_csv():
+    tracks = Track.query.order_by(Track.date.asc()).all()
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["Date", "Name", "Activity Type", "Distance (km)", "Duration (min)",
+                      "Pace (min/km)", "Avg Speed (km/h)", "Max Speed (km/h)",
+                      "Elevation Gain (m)", "Elevation Loss (m)",
+                      "Avg HR", "Max HR", "Avg Cadence", "Calories", "Tags", "Notes"])
+    for t in tracks:
+        dist_km = (t.distance_m or 0) / 1000
+        duration_min = (t.duration_s or 0) / 60
+        pace = round(duration_min / dist_km, 2) if dist_km > 0 else ""
+        writer.writerow([
+            t.date, t.name, t.activity_type or "running",
+            round(dist_km, 2), round(duration_min, 2), pace,
+            round((t.avg_speed_ms or 0) * 3.6, 2),
+            round((t.max_speed_ms or 0) * 3.6, 2),
+            round(t.elevation_gain_m or 0, 1),
+            round(t.elevation_loss_m or 0, 1),
+            round(t.avg_hr) if t.avg_hr else "",
+            round(t.max_hr) if t.max_hr else "",
+            round(t.avg_cadence) if t.avg_cadence else "",
+            round(t.calories) if t.calories else "",
+            t.tags or "", t.notes or "",
+        ])
+    output.seek(0)
+    return Response(output.getvalue(), mimetype="text/csv",
+                    headers={"Content-Disposition": "attachment;filename=stridelog_export.csv"})
+
+
+@app.route("/api/export/json")
+def export_json():
+    tracks = Track.query.order_by(Track.date.asc()).all()
+    result = []
+    for t in tracks:
+        dist_km = (t.distance_m or 0) / 1000
+        duration_min = (t.duration_s or 0) / 60
+        result.append({
+            "date": t.date, "name": t.name,
+            "activity_type": t.activity_type or "running",
+            "distance_km": round(dist_km, 2),
+            "duration_min": round(duration_min, 2),
+            "pace_min_km": round(duration_min / dist_km, 2) if dist_km > 0 else None,
+            "avg_speed_kmh": round((t.avg_speed_ms or 0) * 3.6, 2),
+            "max_speed_kmh": round((t.max_speed_ms or 0) * 3.6, 2),
+            "elevation_gain_m": round(t.elevation_gain_m or 0, 1),
+            "elevation_loss_m": round(t.elevation_loss_m or 0, 1),
+            "avg_hr": round(t.avg_hr) if t.avg_hr else None,
+            "max_hr": round(t.max_hr) if t.max_hr else None,
+            "avg_cadence": round(t.avg_cadence) if t.avg_cadence else None,
+            "calories": round(t.calories) if t.calories else None,
+            "tags": t.tags or "", "notes": t.notes or "",
+        })
+    return Response(json.dumps(result, indent=2), mimetype="application/json",
+                    headers={"Content-Disposition": "attachment;filename=stridelog_export.json"})
+
+
+@app.route("/api/backup")
+def backup_db():
+    db_path = os.path.join(DATA_DIR, "tracks.db")
+    if not os.path.exists(db_path):
+        return jsonify({"error": "Database not found"}), 404
+    # Create a safe copy to avoid locking issues
+    tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+    tmp.close()
+    shutil.copy2(db_path, tmp.name)
+    return send_file(tmp.name, as_attachment=True, download_name="stridelog_backup.db",
+                     mimetype="application/x-sqlite3")
+
+
+@app.route("/api/restore", methods=["POST"])
+def restore_db():
+    f = request.files.get("file")
+    if not f:
+        return jsonify({"error": "No file provided"}), 400
+    # Validate it's a real SQLite file
+    header = f.read(16)
+    if not header.startswith(b"SQLite format 3"):
+        return jsonify({"error": "Not a valid SQLite database"}), 400
+    f.seek(0)
+    db_path = os.path.join(DATA_DIR, "tracks.db")
+    # Save backup of current db
+    if os.path.exists(db_path):
+        shutil.copy2(db_path, db_path + ".bak")
+    # Close current connections
+    db.session.remove()
+    db.engine.dispose()
+    # Write new db
+    f.save(db_path)
+    return jsonify({"ok": True, "message": "Database restored. Please reload the page."})
 
 
 if __name__ == "__main__":

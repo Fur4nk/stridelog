@@ -174,6 +174,33 @@ h1 span { color: var(--accent); }
 .compare-bar .compare-text { font-size: 0.85rem; flex: 1; }
 .compare-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; }
 
+/* Sport badges */
+.sport-badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; }
+.sport-badge.running { background: color-mix(in srgb, var(--green) 20%, transparent); color: var(--green); }
+.sport-badge.cycling { background: color-mix(in srgb, var(--accent) 20%, transparent); color: var(--accent); }
+.sport-badge.walking { background: color-mix(in srgb, var(--yellow) 20%, transparent); color: var(--yellow); }
+.sport-badge.other { background: color-mix(in srgb, var(--text-muted) 20%, transparent); color: var(--text-muted); }
+
+/* Tags */
+.tag { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 0.7rem; background: var(--surface2); color: var(--text-muted); margin: 1px 2px; }
+.tags-input { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; min-height: 32px; }
+.tags-input input { border: none; background: none; color: var(--text); font-size: 0.85rem; outline: none; flex: 1; min-width: 80px; }
+.tags-input .tag { cursor: pointer; }
+.tags-input .tag:hover { background: var(--red); color: #fff; }
+
+/* Notes */
+.notes-area { width: 100%; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 8px; color: var(--text); font-size: 0.85rem; font-family: inherit; resize: vertical; min-height: 60px; }
+
+/* Data menu */
+.data-menu { position: relative; display: inline-block; }
+.data-menu-btn { background: var(--surface); border: 1px solid var(--border); color: var(--text); border-radius: var(--radius); padding: 8px 14px; cursor: pointer; font-size: 0.85rem; transition: all 0.2s; }
+.data-menu-btn:hover { border-color: var(--accent); color: var(--accent); }
+.data-menu-dropdown { display: none; position: absolute; right: 0; top: 100%; margin-top: 4px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); min-width: 180px; z-index: 100; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+.data-menu-dropdown.active { display: block; }
+.data-menu-dropdown a, .data-menu-dropdown label { display: block; padding: 10px 16px; color: var(--text); font-size: 0.85rem; cursor: pointer; text-decoration: none; transition: background 0.15s; }
+.data-menu-dropdown a:hover, .data-menu-dropdown label:hover { background: var(--surface2); color: var(--accent); }
+.data-menu-dropdown hr { border: none; border-top: 1px solid var(--border); margin: 0; }
+
 /* Toast */
 .toast-container { position: fixed; bottom: 20px; right: 20px; z-index: 1000; }
 .toast { background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 20px; margin-top: 8px; font-size: 0.85rem; animation: slideIn 0.3s ease; }
@@ -197,6 +224,16 @@ h1 span { color: var(--accent); }
   <div class="header-actions">
     <button class="btn-import" id="btnImport">+ Import</button>
     <input type="file" id="fileInput" multiple accept=".gpx,.kmz,.kml" hidden>
+    <div class="data-menu">
+      <button class="data-menu-btn" id="dataMenuBtn" title="Data">&#9776; Data</button>
+      <div class="data-menu-dropdown" id="dataMenuDropdown">
+        <a href="/api/export/csv" download>Export CSV</a>
+        <a href="/api/export/json" download>Export JSON</a>
+        <hr>
+        <a href="/api/backup" download>Backup Database</a>
+        <label id="restoreLabel">Restore Database<input type="file" id="restoreInput" accept=".db" hidden></label>
+      </div>
+    </div>
     <button class="theme-toggle" id="themeToggle" title="Toggle theme">&#9790;</button>
   </div>
 </div>
@@ -209,6 +246,10 @@ h1 span { color: var(--accent); }
     <option value="month">This month</option>
     <option value="quarter">This quarter</option>
     <option value="year">This year</option>
+  </select>
+  <label>Activity:</label>
+  <select id="activityFilter">
+    <option value="all">All activities</option>
   </select>
 </div>
 
@@ -301,6 +342,7 @@ h1 span { color: var(--accent); }
       <tr>
         <th></th>
         <th data-col="date">Date <span class="sort-arrow"></span></th>
+        <th data-col="activity_type">Type <span class="sort-arrow"></span></th>
         <th data-col="name">Name <span class="sort-arrow"></span></th>
         <th data-col="distance_km">Distance <span class="sort-arrow"></span></th>
         <th data-col="duration_min">Duration <span class="sort-arrow"></span></th>
@@ -324,6 +366,31 @@ h1 span { color: var(--accent); }
     <h2 id="detailTitle"></h2>
     <div class="modal-subtitle" id="detailSubtitle"></div>
     <div class="modal-stats" id="detailStats"></div>
+    <!-- Activity type & Tags/Notes -->
+    <div style="display:flex;gap:16px;margin-bottom:16px;flex-wrap:wrap;align-items:flex-start">
+      <div style="flex:0 0 auto">
+        <label style="font-size:0.75rem;color:var(--text-muted);text-transform:uppercase;display:block;margin-bottom:4px">Activity Type</label>
+        <select id="detailActivityType" style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:6px 10px;color:var(--text);font-size:0.85rem;cursor:pointer;">
+          <option value="running">Running</option>
+          <option value="cycling">Cycling</option>
+          <option value="walking">Walking</option>
+          <option value="hiking">Hiking</option>
+          <option value="trail_running">Trail Running</option>
+          <option value="other">Other</option>
+        </select>
+      </div>
+      <div style="flex:1;min-width:200px">
+        <label style="font-size:0.75rem;color:var(--text-muted);text-transform:uppercase;display:block;margin-bottom:4px">Tags <span style="font-size:0.65rem;text-transform:none">(Enter to add)</span></label>
+        <div class="tags-input" id="detailTagsInput"><input type="text" id="detailTagField" placeholder="Add tag..."></div>
+      </div>
+      <div style="flex:1;min-width:200px">
+        <label style="font-size:0.75rem;color:var(--text-muted);text-transform:uppercase;display:block;margin-bottom:4px">Notes</label>
+        <textarea class="notes-area" id="detailNotes" placeholder="Add notes..."></textarea>
+      </div>
+      <div style="flex:0 0 auto;align-self:flex-end">
+        <button id="detailSaveMeta" style="background:var(--accent);border:none;color:#fff;border-radius:6px;padding:8px 16px;cursor:pointer;font-size:0.85rem">Save</button>
+      </div>
+    </div>
     <div class="detail-grid">
       <div class="chart-card"><h3>Route</h3><div id="detailMap"></div></div>
       <div class="chart-card"><h3>Elevation Profile</h3><canvas id="detailElevation"></canvas></div>
@@ -382,6 +449,48 @@ let statsData = [];     // filtered by period
 let sortCol = 'date', sortAsc = false;
 let leafletMap = null;
 let mapLayers = [];
+
+// --- Data Menu ---
+$('#dataMenuBtn').addEventListener('click', e => {
+  e.stopPropagation();
+  $('#dataMenuDropdown').classList.toggle('active');
+});
+document.addEventListener('click', () => $('#dataMenuDropdown').classList.remove('active'));
+
+$('#restoreInput').addEventListener('change', async function() {
+  const file = this.files[0];
+  if (!file) return;
+  if (!confirm('This will replace your current database. A backup (.bak) will be saved. Continue?')) { this.value = ''; return; }
+  const fd = new FormData();
+  fd.append('file', file);
+  try {
+    const res = await fetch('/api/restore', { method: 'POST', body: fd });
+    const data = await res.json();
+    if (data.ok) { toast(data.message); setTimeout(() => location.reload(), 1000); }
+    else toast('Restore failed: ' + (data.error || 'Unknown error'));
+  } catch (e) { toast('Restore failed: ' + e.message); }
+  this.value = '';
+});
+
+// --- Sport helpers ---
+function sportBadgeClass(type) {
+  if (!type) return 'other';
+  const t = type.toLowerCase();
+  if (t.includes('run')) return 'running';
+  if (t.includes('cycl') || t.includes('bik')) return 'cycling';
+  if (t.includes('walk') || t.includes('hik')) return 'walking';
+  return 'other';
+}
+function sportLabel(type) {
+  if (!type) return 'Run';
+  const t = type.toLowerCase();
+  if (t === 'running') return 'Run';
+  if (t === 'cycling') return 'Bike';
+  if (t === 'walking') return 'Walk';
+  if (t === 'hiking') return 'Hike';
+  if (t === 'trail_running') return 'Trail';
+  return type.charAt(0).toUpperCase() + type.slice(1);
+}
 
 // --- Theme ---
 function setTheme(theme) {
@@ -488,8 +597,29 @@ function filterByPeriod(data) {
   });
 }
 $('#periodFilter').addEventListener('change', applyFilter);
+$('#activityFilter').addEventListener('change', applyFilter);
+
+function populateActivityFilter() {
+  const types = new Set(allStatsData.map(r => r.activity_type || 'running'));
+  const sel = $('#activityFilter');
+  const current = sel.value;
+  sel.innerHTML = '<option value="all">All activities</option>';
+  [...types].sort().forEach(t => {
+    const opt = document.createElement('option');
+    opt.value = t;
+    opt.textContent = sportLabel(t);
+    sel.appendChild(opt);
+  });
+  sel.value = current;
+}
+
 function applyFilter() {
-  statsData = filterByPeriod(allStatsData);
+  let data = filterByPeriod(allStatsData);
+  const actFilter = $('#activityFilter').value;
+  if (actFilter !== 'all') {
+    data = data.filter(r => (r.activity_type || 'running') === actFilter);
+  }
+  statsData = data;
   // Recompute cumulative for filtered data
   let cum = 0;
   statsData.forEach(r => { cum += r.distance_km; r.cumulative_km = Math.round(cum * 100) / 100; });
@@ -507,6 +637,7 @@ async function loadData() {
     allStatsData = await statsRes.json();
     const records = await recRes.json();
     renderRecords(records);
+    populateActivityFilter();
     applyFilter();
     if ($('#tab-map').classList.contains('active')) renderMap();
   } catch (e) {
@@ -547,7 +678,7 @@ let compareSet = new Set();
 
 function renderTable() {
   const filter = ($('#searchInput').value || '').toLowerCase();
-  let rows = statsData.filter(r => (r.date + ' ' + r.name).toLowerCase().includes(filter));
+  let rows = statsData.filter(r => (r.date + ' ' + r.name + ' ' + (r.activity_type || '') + ' ' + (r.tags || '')).toLowerCase().includes(filter));
 
   rows.sort((a, b) => {
     let va = a[sortCol], vb = b[sortCol];
@@ -558,10 +689,14 @@ function renderTable() {
   });
 
   const tbody = $('#tableBody');
-  tbody.innerHTML = rows.map(r => `<tr>
+  tbody.innerHTML = rows.map(r => {
+    const bc = sportBadgeClass(r.activity_type);
+    const tagsHtml = r.tags ? r.tags.split(',').filter(Boolean).map(t => `<span class="tag">${t.trim()}</span>`).join('') : '';
+    return `<tr>
     <td><input type="checkbox" class="cmp-check" data-id="${r.id}" ${compareSet.has(r.id)?'checked':''}></td>
     <td class="clickable-row" data-id="${r.id}" style="cursor:pointer;color:var(--accent)">${r.date}</td>
-    <td class="clickable-row" data-id="${r.id}" style="cursor:pointer">${r.name}</td>
+    <td><span class="sport-badge ${bc}">${sportLabel(r.activity_type)}</span></td>
+    <td class="clickable-row" data-id="${r.id}" style="cursor:pointer">${r.name}${tagsHtml ? ' ' + tagsHtml : ''}</td>
     <td>${r.distance_km.toFixed(2)} km</td>
     <td>${formatDuration(r.duration_min)}</td>
     <td class="${paceClass(r.pace_min_km)}">${formatPace(r.pace_min_km)}/km</td>
@@ -570,7 +705,7 @@ function renderTable() {
     <td>${r.avg_hr || '-'}</td>
     <td>${r.max_hr || '-'}</td>
     <td><button class="btn-del" onclick="event.stopPropagation();deleteTrack(${r.id})">Del</button></td>
-  </tr>`).join('');
+  </tr>`; }).join('');
 
   // Click to open detail
   tbody.querySelectorAll('.clickable-row').forEach(td => {
@@ -785,7 +920,7 @@ async function openDetail(id, splitM) {
   const d = await res.json();
 
   $('#detailTitle').textContent = d.name;
-  $('#detailSubtitle').textContent = `${d.date} — ${d.distance_km} km — ${formatDuration(d.duration_min)}`;
+  $('#detailSubtitle').textContent = `${d.date} — ${sportLabel(d.activity_type)} — ${d.distance_km} km — ${formatDuration(d.duration_min)}`;
 
   // Stats row
   $('#detailStats').innerHTML = [
@@ -796,6 +931,22 @@ async function openDetail(id, splitM) {
     ['Max HR', d.max_hr || '-'],
     ['Cadence', d.avg_cadence || '-'],
   ].map(([l, v]) => `<div class="ms"><div class="ms-val">${v}</div><div class="ms-lbl">${l}</div></div>`).join('');
+
+  // Activity type, tags, notes
+  $('#detailActivityType').value = d.activity_type || 'running';
+  // Tags
+  const tagsContainer = $('#detailTagsInput');
+  tagsContainer.querySelectorAll('.tag').forEach(t => t.remove());
+  const tagField = $('#detailTagField');
+  (d.tags || '').split(',').filter(Boolean).forEach(t => {
+    const span = document.createElement('span');
+    span.className = 'tag';
+    span.textContent = t.trim();
+    span.title = 'Click to remove';
+    span.addEventListener('click', () => span.remove());
+    tagsContainer.insertBefore(span, tagField);
+  });
+  $('#detailNotes').value = d.notes || '';
 
   // Show modal
   $('#detailModal').classList.add('active');
@@ -875,6 +1026,40 @@ function closeDetail() {
 }
 $('#detailModal').addEventListener('click', e => { if (e.target === $('#detailModal')) closeDetail(); });
 $('#splitDistance').addEventListener('change', () => { if (currentDetailId) openDetail(currentDetailId); });
+
+// Tag input
+$('#detailTagField').addEventListener('keydown', e => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    const val = e.target.value.trim();
+    if (!val) return;
+    const span = document.createElement('span');
+    span.className = 'tag';
+    span.textContent = val;
+    span.title = 'Click to remove';
+    span.addEventListener('click', () => span.remove());
+    const container = $('#detailTagsInput');
+    container.insertBefore(span, e.target);
+    e.target.value = '';
+  }
+});
+
+// Save activity type, tags, notes
+$('#detailSaveMeta').addEventListener('click', async () => {
+  if (!currentDetailId) return;
+  const tags = [...$('#detailTagsInput').querySelectorAll('.tag')].map(t => t.textContent).join(',');
+  const notes = $('#detailNotes').value;
+  const activity_type = $('#detailActivityType').value;
+  try {
+    await fetch('/api/track/' + currentDetailId, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tags, notes, activity_type }),
+    });
+    toast('Saved');
+    loadData();
+  } catch (e) { toast('Save failed: ' + e.message); }
+});
 
 // --- Compare ---
 let compareMap = null;
