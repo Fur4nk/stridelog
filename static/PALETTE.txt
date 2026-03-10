@@ -1,0 +1,14 @@
+STRIDELOG PALETTE
+==================
+
+Dark background: #050816
+Dark background accent: #0B1230
+Off-white: #F7F8FC
+Cyan: #5CEBFF
+Electric blue: #3E7BFF
+Deep blue: #2C58FF
+Magenta glow / dot: #F68BFF
+Divider / support line: #7E8BBF
+
+Suggested gradient:
+- #5CEBFF -> #3E7BFF -> #2C58FF

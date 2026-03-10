@@ -1,4 +1,4 @@
-const CACHE = 'stridelog-v2';
+const CACHE = 'stridelog-v3';
 const PRECACHE = ['/', '/static/manifest.json'];
 
 self.addEventListener('install', e => {
