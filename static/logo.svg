@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" fill="none">
+  <!-- Dynamic runner silhouette -->
+  <!-- Head -->
+  <circle cx="28" cy="8" r="4.5" fill="#4f8ef7"/>
+  <!-- Body -->
+  <path d="M26 12.5 L23 24" stroke="#4f8ef7" stroke-width="4" stroke-linecap="round"/>
+  <!-- Front arm -->
+  <path d="M25 16 L18 12" stroke="#4f8ef7" stroke-width="3" stroke-linecap="round"/>
+  <!-- Back arm -->
+  <path d="M25 17 L32 20" stroke="#4f8ef7" stroke-width="3" stroke-linecap="round"/>
+  <!-- Front leg (extended) -->
+  <path d="M23 24 L14 30 L10 38" stroke="#00b894" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Back leg (kicked up) -->
+  <path d="M23 24 L30 30 L36 26" stroke="#00b894" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Speed lines -->
+  <line x1="36" y1="10" x2="42" y2="10" stroke="#4f8ef7" stroke-width="2" stroke-linecap="round" opacity="0.4"/>
+  <line x1="34" y1="15" x2="42" y2="15" stroke="#4f8ef7" stroke-width="2" stroke-linecap="round" opacity="0.3"/>
+  <line x1="35" y1="20" x2="40" y2="20" stroke="#4f8ef7" stroke-width="2" stroke-linecap="round" opacity="0.2"/>
+</svg>
