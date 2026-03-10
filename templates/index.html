@@ -831,7 +831,7 @@ function renderTable() {
     <td><span class="sport-badge ${bc}">${sportLabel(r.activity_type)}</span></td>
     <td class="clickable-row" data-id="${r.id}" style="cursor:pointer">${r.name}${tagsHtml ? ' ' + tagsHtml : ''}</td>
     <td>${r.distance_km.toFixed(2)} km</td>
-    <td>${formatDuration(r.duration_min)}</td>
+    <td>${formatDuration(r.moving_min || r.duration_min)}${r.moving_min && Math.abs(r.moving_min - r.duration_min) > 0.5 ? ' <span style="color:var(--text-muted);font-size:0.75rem">(' + formatDuration(r.duration_min) + ')</span>' : ''}</td>
     <td class="${paceClass(r.pace_min_km)}">${formatPace(r.pace_min_km)}/km</td>
     <td>${r.avg_speed_kmh.toFixed(1)} km/h</td>
     <td>${r.elevation_gain.toFixed(0)} m</td>
@@ -1196,17 +1196,23 @@ async function openDetail(id, splitM) {
   const d = await res.json();
 
   $('#detailTitle').textContent = d.name;
-  $('#detailSubtitle').textContent = `${d.date} — ${sportLabel(d.activity_type)} — ${d.distance_km} km — ${formatDuration(d.duration_min)}`;
+  $('#detailSubtitle').textContent = `${d.date} — ${sportLabel(d.activity_type)} — ${d.distance_km} km — ${formatDuration(d.moving_min || d.duration_min)}`;
 
   // Stats row
-  $('#detailStats').innerHTML = [
+  const hasPause = d.moving_min && Math.abs(d.moving_min - d.duration_min) > 0.5;
+  const statsItems = [
     ['Pace', formatPace(d.pace_min_km) + '/km'],
+    ['Moving Time', formatDuration(d.moving_min || d.duration_min)],
+  ];
+  if (hasPause) statsItems.push(['Total Time', formatDuration(d.duration_min)]);
+  statsItems.push(
     ['D+', d.elevation_gain + ' m'],
     ['D-', d.elevation_loss + ' m'],
     ['Avg HR', d.avg_hr || '-'],
     ['Max HR', d.max_hr || '-'],
     ['Cadence', d.avg_cadence || '-'],
-  ].map(([l, v]) => `<div class="ms"><div class="ms-val">${v}</div><div class="ms-lbl">${l}</div></div>`).join('');
+  );
+  $('#detailStats').innerHTML = statsItems.map(([l, v]) => `<div class="ms"><div class="ms-val">${v}</div><div class="ms-lbl">${l}</div></div>`).join('');
 
   // Activity type, tags, notes
   $('#detailActivityType').value = d.activity_type || 'running';

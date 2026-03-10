@@ -41,6 +41,7 @@ class Track(db.Model):
     max_hr = db.Column(db.Float)
     avg_cadence = db.Column(db.Float)
     calories = db.Column(db.Float)
+    moving_time_s = db.Column(db.Float)
     track_id = db.Column(db.String(256), unique=True)
     coordinates = db.Column(db.Text)
     trackpoints = db.Column(db.Text)
@@ -53,10 +54,13 @@ with app.app_context():
     from sqlalchemy import inspect as sa_inspect
     inspector = sa_inspect(db.engine)
     cols = [c["name"] for c in inspector.get_columns("track")]
-    for col_name in ("coordinates", "trackpoints", "tags", "notes"):
+    text_cols = ("coordinates", "trackpoints", "tags", "notes")
+    float_cols = ("moving_time_s",)
+    for col_name in text_cols + float_cols:
         if col_name not in cols:
+            col_type = "FLOAT" if col_name in float_cols else "TEXT"
             with db.engine.connect() as conn:
-                conn.execute(db.text(f"ALTER TABLE track ADD COLUMN {col_name} TEXT"))
+                conn.execute(db.text(f"ALTER TABLE track ADD COLUMN {col_name} {col_type}"))
                 conn.commit()
 
 
@@ -116,6 +120,8 @@ def build_trackpoints_and_metrics(points):
     cum_dist = 0.0
     elevation_gain = 0.0
     elevation_loss = 0.0
+    moving_time = 0.0
+    MOVING_THRESHOLD = 0.5  # m/s — below this is considered a pause
     hrs = []
     cads = []
     speeds = []
@@ -145,12 +151,21 @@ def build_trackpoints_and_metrics(points):
             else:
                 elevation_loss += abs(diff)
 
+        seg_speed = None
         if p1["speed"] is not None:
-            speeds.append(p1["speed"])
+            seg_speed = p1["speed"]
+            speeds.append(seg_speed)
         elif p0["time"] and p1["time"]:
             dt = (p1["time"] - p0["time"]).total_seconds()
             if dt > 0:
-                speeds.append(d / dt)
+                seg_speed = d / dt
+                speeds.append(seg_speed)
+
+        # Accumulate moving time: count segment if speed above threshold
+        if p0["time"] and p1["time"]:
+            seg_dt = (p1["time"] - p0["time"]).total_seconds()
+            if seg_dt > 0 and seg_speed is not None and seg_speed >= MOVING_THRESHOLD:
+                moving_time += seg_dt
 
         if p1["hr"] is not None:
             hrs.append(p1["hr"])
@@ -179,6 +194,7 @@ def build_trackpoints_and_metrics(points):
     metrics = {
         "date": date_str,
         "duration_s": duration_s,
+        "moving_time_s": moving_time if moving_time > 0 else duration_s,
         "distance_m": cum_dist,
         "avg_speed_ms": avg_speed,
         "max_speed_ms": max_speed,
@@ -595,9 +611,10 @@ def api_stats():
         dist_km = (t.distance_m or 0) / 1000
         cumulative += dist_km
         duration_min = (t.duration_s or 0) / 60
+        moving_min = (t.moving_time_s or t.duration_s or 0) / 60
         avg_speed_kmh = (t.avg_speed_ms or 0) * 3.6
         max_speed_kmh = (t.max_speed_ms or 0) * 3.6
-        pace = duration_min / dist_km if dist_km > 0 else None
+        pace = moving_min / dist_km if dist_km > 0 else None
 
         result.append({
             "id": t.id,
@@ -606,6 +623,7 @@ def api_stats():
             "activity_type": t.activity_type or "running",
             "distance_km": round(dist_km, 2),
             "duration_min": round(duration_min, 2),
+            "moving_min": round(moving_min, 2),
             "pace_min_km": round(pace, 2) if pace else None,
             "avg_speed_kmh": round(avg_speed_kmh, 2),
             "max_speed_kmh": round(max_speed_kmh, 2),
@@ -647,13 +665,15 @@ def api_track_detail(tid):
 
     dist_km = (t.distance_m or 0) / 1000
     duration_min = (t.duration_s or 0) / 60
+    moving_min = (t.moving_time_s or t.duration_s or 0) / 60
 
     return jsonify({
         "id": t.id, "name": t.name, "date": t.date,
         "activity_type": t.activity_type or "running",
         "distance_km": round(dist_km, 2),
         "duration_min": round(duration_min, 2),
-        "pace_min_km": round(duration_min / dist_km, 2) if dist_km > 0 else None,
+        "moving_min": round(moving_min, 2),
+        "pace_min_km": round(moving_min / dist_km, 2) if dist_km > 0 else None,
         "elevation_gain": round(t.elevation_gain_m or 0, 1),
         "elevation_loss": round(t.elevation_loss_m or 0, 1),
         "avg_hr": round(t.avg_hr) if t.avg_hr else None,
@@ -704,6 +724,7 @@ def api_records():
         for t in sport_tracks:
             dk = (t.distance_m or 0) / 1000
             dm = (t.duration_s or 0) / 60
+            mm = (t.moving_time_s or t.duration_s or 0) / 60  # moving minutes
 
             # Best efforts (only for tracks with trackpoints)
             if t.trackpoints:
@@ -718,16 +739,16 @@ def api_records():
                                 "track_name": t.name, "date": t.date,
                             }
 
-            # Best pace
-            if dk > 0:
-                pace = dm / dk
+            # Best pace (based on moving time)
+            if dk > 0 and mm > 0:
+                pace = mm / dk
                 if best_pace is None or pace < best_pace["pace_min_km"]:
                     best_pace = {"pace_min_km": round(pace, 2), "track_id": t.id,
                                  "track_name": t.name, "date": t.date}
 
-            # Best avg speed
-            if dk > 0 and dm > 0:
-                speed = dk / (dm / 60)
+            # Best avg speed (based on moving time)
+            if dk > 0 and mm > 0:
+                speed = dk / (mm / 60)
                 if best_speed is None or speed > best_speed["speed_kmh"]:
                     best_speed = {"speed_kmh": round(speed, 1), "track_id": t.id,
                                   "track_name": t.name, "date": t.date}
