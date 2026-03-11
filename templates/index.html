@@ -51,7 +51,7 @@ h1 span { color: var(--accent); }
 .header-actions { display: flex; align-items: center; gap: 8px; }
 .btn-import { background: var(--surface); border: 1px solid var(--border); color: var(--text); border-radius: var(--radius); padding: 8px 28px; cursor: pointer; font-size: 0.85rem; transition: all 0.2s; }
 .btn-import:hover { border-color: var(--accent); color: var(--accent); }
-.theme-toggle { background: var(--surface); border: 1px solid var(--border); color: var(--text); border-radius: var(--radius); padding: 8px 14px; cursor: pointer; font-size: 1.1rem; transition: all 0.2s; }
+.theme-toggle { background: var(--surface); border: 1px solid var(--border); color: var(--text); border-radius: var(--radius); padding: 8px 14px; cursor: pointer; font-size: 0.85rem; transition: all 0.2s; }
 .theme-toggle:hover { border-color: var(--accent); }
 
 /* Drop overlay */
@@ -66,7 +66,7 @@ h1 span { color: var(--accent); }
 }
 
 /* Summary cards */
-.summary-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 24px; }
+.summary-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 24px; }
 .card { background: var(--surface); border-radius: var(--radius); padding: 20px; }
 .card .label { color: var(--text-muted); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.5px; }
 .card .value { font-size: 1.6rem; font-weight: 700; margin-top: 4px; }
@@ -127,17 +127,18 @@ h1 span { color: var(--accent); }
 .goal-input-row button { background: var(--accent); border: none; color: #fff; border-radius: 6px; padding: 4px 10px; cursor: pointer; font-size: 0.8rem; }
 
 /* Calendar heatmap */
-.heatmap-container { background: var(--surface); border-radius: var(--radius); padding: 16px 16px 12px; margin-bottom: 24px; }
+.heatmap-container { background: var(--surface); border-radius: var(--radius); padding: 16px 16px 12px; margin-bottom: 24px; display: flex; flex-direction: column; }
 .heatmap-container h3 { font-size: 0.9rem; color: var(--text-muted); margin-bottom: 10px; }
-.heatmap-wrap { overflow-x: auto; }
-.heatmap { display: grid; gap: var(--hm-gap, 3px); justify-content: start; }
-.heatmap-col { display: flex; flex-direction: column; gap: var(--hm-gap, 3px); }
-.heatmap-cell { width: var(--hm-size); height: var(--hm-size); border-radius: 2px; background: var(--surface2); }
+.heatmap-wrap { overflow: hidden; width: 100%; flex: 1; min-width: 0; }
+.heatmap { display: grid; gap: var(--hm-gap, 3px); width: 100%; min-width: 0; }
+.heatmap-col { display: flex; flex-direction: column; gap: var(--hm-gap, 3px); min-width: 0; }
+.heatmap-cell { width: 100%; aspect-ratio: 1; border-radius: 2px; background: var(--surface2); }
+.heatmap-cell.is-future { opacity: 0.5; box-shadow: inset 0 0 0 1px var(--border); }
 .heatmap-cell[data-level="1"] { background: color-mix(in srgb, var(--green) 30%, var(--surface2)); }
 .heatmap-cell[data-level="2"] { background: color-mix(in srgb, var(--green) 55%, var(--surface2)); }
 .heatmap-cell[data-level="3"] { background: color-mix(in srgb, var(--green) 80%, var(--surface2)); }
 .heatmap-cell[data-level="4"] { background: var(--green); }
-.heatmap-months { display: grid; gap: var(--hm-gap, 3px); font-size: 0.7rem; color: var(--text-muted); margin-bottom: 4px; height: 16px; justify-content: start; }
+.heatmap-months { display: grid; gap: var(--hm-gap, 3px); font-size: 0.7rem; color: var(--text-muted); margin-bottom: 4px; height: 16px; width: 100%; }
 .heatmap-legend { display: flex; align-items: center; gap: 4px; margin-top: 8px; font-size: 0.7rem; color: var(--text-muted); justify-content: flex-end; }
 .heatmap-legend .heatmap-cell { width: 10px; height: 10px; flex: none; aspect-ratio: auto; }
 
@@ -164,7 +165,7 @@ h1 span { color: var(--accent); }
 .splits-table td { padding: 6px 10px; border-bottom: 1px solid var(--border); }
 
 /* Records */
-.records-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 24px; }
+.records-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 24px; }
 .record-card { background: var(--surface); border-radius: var(--radius); padding: 14px; }
 .record-card .rc-label { font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
 .record-card .rc-value { font-size: 1.4rem; font-weight: 700; margin: 2px 0; }
@@ -220,11 +221,28 @@ h1 span { color: var(--accent); }
 /* Responsive */
 @media (max-width: 768px) {
   .charts-grid { grid-template-columns: 1fr; }
-  .goals-row { grid-template-columns: 1fr; }
+  .goals-row { grid-template-columns: 1fr 1fr; gap: 8px; }
   .detail-grid { grid-template-columns: 1fr; }
   .compare-grid { grid-template-columns: 1fr; }
   .table-controls input { width: 100%; }
   body { padding: 12px; }
+  .header { flex-wrap: wrap; gap: 8px; }
+  .header h1 { font-size: 1.4rem; }
+  .header-actions { width: 100%; justify-content: flex-start; flex-wrap: wrap; gap: 6px; }
+  .header-actions .btn-import { padding: 6px 14px; font-size: 0.8rem; }
+  .header-actions .data-menu-btn { padding: 6px 10px; font-size: 0.8rem; }
+  .header-actions .theme-toggle { padding: 6px 14px; font-size: 0.8rem; }
+  .filter-bar { flex-wrap: nowrap; gap: 6px; }
+  .filter-bar label { font-size: 0.75rem; }
+  .filter-bar select { font-size: 0.75rem; padding: 5px 6px; min-width: 0; }
+  .tabs { width: 100%; }
+  .tab-btn { flex: 1; padding: 10px 0; font-size: 0.8rem; text-align: center; }
+  .summary-row { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  .summary-row .card { padding: 12px; }
+  .summary-row .card .value { font-size: 1.2rem; }
+  .records-row { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  .heatmap-container { padding: 12px 8px 10px; }
+  .heatmap, .heatmap-months { gap: 2px; }
 }
 </style>
 </head>
@@ -309,8 +327,10 @@ h1 span { color: var(--accent); }
 <!-- Calendar Heatmap -->
 <div class="heatmap-container">
   <h3>Activity Calendar</h3>
-  <div class="heatmap-months" id="heatmapMonths"></div>
-  <div class="heatmap-wrap"><div class="heatmap" id="heatmap"></div></div>
+  <div class="heatmap-wrap">
+    <div class="heatmap-months" id="heatmapMonths"></div>
+    <div class="heatmap" id="heatmap"></div>
+  </div>
   <div class="heatmap-legend">Less <div class="heatmap-cell"></div><div class="heatmap-cell" data-level="1"></div><div class="heatmap-cell" data-level="2"></div><div class="heatmap-cell" data-level="3"></div><div class="heatmap-cell" data-level="4"></div> More</div>
 </div>
 
@@ -760,7 +780,7 @@ function applyFilter() {
   computeSummary();
   renderTable();
   renderCharts();
-  renderHeatmap();
+  scheduleHeatmapRender();
   updateGoals();
 }
 
@@ -1455,9 +1475,24 @@ function closeCompare() {
 $('#compareModal').addEventListener('click', e => { if (e.target === $('#compareModal')) closeCompare(); });
 
 // --- Calendar Heatmap ---
+let heatmapRenderFrame = 0;
+
+function scheduleHeatmapRender() {
+  cancelAnimationFrame(heatmapRenderFrame);
+  heatmapRenderFrame = requestAnimationFrame(() => {
+    heatmapRenderFrame = 0;
+    renderHeatmap();
+  });
+}
+
 function renderHeatmap() {
   const container = $('#heatmap');
   const monthsEl = $('#heatmapMonths');
+  // Defer to next frame so container has layout dimensions
+  if (!container.parentElement.clientWidth) {
+    requestAnimationFrame(renderHeatmap);
+    return;
+  }
   container.innerHTML = '';
   monthsEl.innerHTML = '';
 
@@ -1496,17 +1531,10 @@ function renderHeatmap() {
   const allKm = Object.values(dateMap);
   const maxKm = allKm.length ? Math.max(...allKm) : 1;
 
-  // Cell size: always based on 53 weeks fitting the container width
-  const totalWeeks = Math.ceil((end - start) / (7 * 86400000)) + 1;
-  const refWeeks = 53;
-  const gap = 3;
-  const wrapWidth = container.parentElement.clientWidth || 800;
-  const cellSize = Math.max(4, Math.floor((wrapWidth - (refWeeks - 1) * gap) / refWeeks));
-  container.style.setProperty('--hm-size', cellSize + 'px');
-  const colSize = cellSize + 'px';
-  const gridCols = `repeat(${totalWeeks}, ${colSize})`;
-  container.style.gridTemplateColumns = gridCols;
-  monthsEl.style.gridTemplateColumns = gridCols;
+  const isMobile = window.innerWidth <= 768;
+  const gap = isMobile ? 2 : 3;
+  container.style.setProperty('--hm-gap', gap + 'px');
+  monthsEl.style.setProperty('--hm-gap', gap + 'px');
 
   const monthLabelMap = {};  // pos -> label
   let lastMonth = null;
@@ -1526,7 +1554,7 @@ function renderHeatmap() {
         colNewMonth = { month: d.toLocaleString('default', { month: 'short' }), key: cellMonth };
       }
       if (d > today) {
-        cell.style.opacity = '0.3';
+        cell.classList.add('is-future');
         cell.title = key;
       } else {
         const km = dateMap[key] || 0;
@@ -1554,6 +1582,10 @@ function renderHeatmap() {
     weekCount++;
   }
 
+  const gridCols = `repeat(${weekCount}, minmax(0, 1fr))`;
+  container.style.gridTemplateColumns = gridCols;
+  monthsEl.style.gridTemplateColumns = gridCols;
+
   // Month labels: one div per grid column, text only where a month starts
   for (let i = 0; i < weekCount; i++) {
     const span = document.createElement('span');
@@ -1561,6 +1593,8 @@ function renderHeatmap() {
     monthsEl.appendChild(span);
   }
 }
+
+window.addEventListener('resize', scheduleHeatmapRender);
 
 // --- Goals ---
 function getGoals() {
