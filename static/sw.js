@@ -1,4 +1,4 @@
-const CACHE = 'stridelog-v3';
+const CACHE = 'stridelog-v5';
 const PRECACHE = ['/', '/static/manifest.json'];
 
 self.addEventListener('install', e => {
@@ -13,6 +13,7 @@ self.addEventListener('activate', e => {
 });
 
 self.addEventListener('fetch', e => {
+  // Let share target POST pass through to the server
   if (e.request.method !== 'GET') return;
   e.respondWith(
     fetch(e.request).then(res => {

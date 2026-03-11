@@ -8,16 +8,32 @@
   "description": "Running workout analyzer for OpenTracks",
   "icons": [
     {
-      "src": "/static/stridelog-app-icon.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
-      "purpose": "any"
+      "src": "/static/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
     },
     {
-      "src": "/static/favicon.svg",
+      "src": "/static/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "/static/stridelog-app-icon.svg",
       "sizes": "any",
-      "type": "image/svg+xml",
-      "purpose": "monochrome"
+      "type": "image/svg+xml"
     }
-  ]
+  ],
+  "share_target": {
+    "action": "/share",
+    "method": "POST",
+    "enctype": "multipart/form-data",
+    "params": {
+      "files": [
+        {
+          "name": "files",
+          "accept": [".gpx", ".kmz", ".kml", "application/gpx+xml", "application/vnd.google-earth.kmz", "application/vnd.google-earth.kml+xml", "application/octet-stream"]
+        }
+      ]
+    }
+  }
 }

@@ -9,7 +9,7 @@ import tempfile
 from datetime import datetime, timezone
 from xml.etree.ElementTree import parse as ET_parse, fromstring as ET_fromstring
 
-from flask import Flask, render_template, request, jsonify, Response, send_file
+from flask import Flask, render_template, request, jsonify, Response, send_file, redirect
 from flask_sqlalchemy import SQLAlchemy
 
 app = Flask(__name__, template_folder="../templates", static_folder="../static")
@@ -551,6 +551,17 @@ def upload():
         all_results.extend(results)
 
     return jsonify({"results": [[r[0], r[1], r[2]] for r in all_results]})
+
+
+@app.route("/share", methods=["POST", "GET"])
+def share_target():
+    """Web Share Target: receive files shared from other apps (e.g. OpenTracks)."""
+    files = request.files.getlist("files")
+    if not files:
+        return redirect("/")
+    for f in files:
+        process_file(f)
+    return redirect("/")
 
 
 @app.route("/api/track/manual", methods=["POST"])
