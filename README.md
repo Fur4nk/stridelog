@@ -7,10 +7,20 @@ Supports GPX 1.1, KML 2.3, and KMZ file imports with automatic parsing of distan
 ## Quick Start
 
 ```bash
+cp .env.example .env
+# edit .env to enable OIDC login or disable password login
 docker compose up -d
 ```
 
 Open http://localhost:7842
+
+Set `PASSWORD_LOGIN_ENABLED=false` in `.env` to hide the password form and disable `POST /login`.
+Use this only when another login method is configured, typically OIDC via `OIDC_PROVIDER_URL`, `OIDC_CLIENT_ID`, and `OIDC_CLIENT_SECRET`.
+After changing `.env`, restart the app or recreate the container so the new settings are loaded.
+
+Run details can also fetch historical weather near the workout start time.
+The default provider is `WEATHER_PROVIDER=open-meteo`, which is free and does not need an API key.
+StrideLog stores run weather on first lookup and then serves it from the local database cache.
 
 ## Features
 
