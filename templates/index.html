@@ -359,6 +359,7 @@ h1 span { color: var(--accent); }
     <div class="chart-card"><h3>Pace Distribution</h3><canvas id="chartPaceHist"></canvas></div>
     <div class="chart-card"><h3>Elevation Gain / Loss (m)</h3><canvas id="chartElevGainLoss"></canvas></div>
     <div class="chart-card" id="hrChartCard"><h3>Heart Rate</h3><canvas id="chartHR"></canvas></div>
+    <div class="chart-card" id="weatherChartCard"><h3>Weather Along Runs</h3><canvas id="chartWeather"></canvas></div>
   </div>
 </div>
 
@@ -1056,6 +1057,59 @@ function renderCharts() {
         ],
       },
       options: opts,
+    });
+  }
+
+  // Weather chart (cached DB data only, no provider calls from dashboard)
+  const weatherRows = statsData.filter(r => r.weather && r.weather.temperature_c != null);
+  $('#weatherChartCard').style.display = weatherRows.length ? '' : 'none';
+  if (weatherRows.length) {
+    charts.weather = new Chart($('#chartWeather'), {
+      type: 'line',
+      data: {
+        labels: weatherRows.map(r => r.date),
+        datasets: [
+          {
+            label: 'Temperature (C)',
+            data: weatherRows.map(r => r.weather.temperature_c),
+            borderColor: cc.orange,
+            backgroundColor: cc.orangeAlpha,
+            tension: 0.3,
+            yAxisID: 'yTemp',
+          },
+          {
+            label: 'Humidity (%)',
+            data: weatherRows.map(r => r.weather.relative_humidity_pct),
+            borderColor: cc.accent,
+            backgroundColor: cc.accentAlpha,
+            tension: 0.3,
+            spanGaps: true,
+            yAxisID: 'yHumidity',
+          },
+        ],
+      },
+      options: {
+        ...opts,
+        scales: {
+          x: { ...opts.scales.x },
+          yTemp: {
+            type: 'linear',
+            position: 'left',
+            ticks: { color: getCSSVar('--chart-text') },
+            grid: { color: getCSSVar('--chart-grid') },
+            title: { display: true, text: 'C', color: getCSSVar('--chart-text') },
+          },
+          yHumidity: {
+            type: 'linear',
+            position: 'right',
+            beginAtZero: true,
+            suggestedMax: 100,
+            ticks: { color: getCSSVar('--chart-text') },
+            grid: { drawOnChartArea: false },
+            title: { display: true, text: '%', color: getCSSVar('--chart-text') },
+          },
+        },
+      },
     });
   }
 

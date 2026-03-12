@@ -1361,6 +1361,24 @@ def api_stats():
         avg_speed_kmh = (t.avg_speed_ms or 0) * 3.6
         max_speed_kmh = (t.max_speed_ms or 0) * 3.6
         pace = moving_min / dist_km if dist_km > 0 else None
+        weather = None
+        if t.weather_json:
+            try:
+                weather_payload = json.loads(t.weather_json)
+                snapshots = weather_payload.get("snapshots") or []
+                chosen = next((s for s in snapshots if s.get("label") == "mid"), None) or (snapshots[0] if snapshots else None)
+                if chosen:
+                    weather = {
+                        "temperature_c": chosen.get("temperature_c"),
+                        "relative_humidity_pct": chosen.get("relative_humidity_pct"),
+                        "precipitation_mm_per_hour": chosen.get("precipitation_mm_per_hour"),
+                        "weather_code": chosen.get("weather_code"),
+                        "weather_label": chosen.get("weather_label"),
+                        "precipitation_total_mm": weather_payload.get("precipitation_total_mm"),
+                        "time_accuracy": weather_payload.get("time_accuracy"),
+                    }
+            except (TypeError, ValueError, json.JSONDecodeError):
+                weather = None
 
         result.append({
             "id": t.id,
@@ -1381,6 +1399,7 @@ def api_stats():
             "cumulative_km": round(cumulative, 2),
             "tags": t.tags or "",
             "notes": t.notes or "",
+            "weather": weather,
         })
 
     return jsonify(result)
