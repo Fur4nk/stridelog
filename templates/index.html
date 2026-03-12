@@ -2012,7 +2012,7 @@ function renderHeatmap() {
     for (let dow = 0; dow < 7; dow++) {
       const cell = document.createElement('div');
       cell.className = 'heatmap-cell';
-      const key = d.toISOString().slice(0, 10);
+      const key = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
       const cellMonth = d.getMonth() + '-' + d.getFullYear();
       if (d.getDate() === 1 && cellMonth !== lastMonth) {
         colNewMonth = { month: d.toLocaleString('default', { month: 'short' }), key: cellMonth };
@@ -2046,7 +2046,11 @@ function renderHeatmap() {
     weekCount++;
   }
 
-  const gridCols = `repeat(${weekCount}, minmax(0, 1fr))`;
+  // Fix cell size based on 52-week layout so cells stay small for any period
+  const wrapWidth = container.parentElement.clientWidth;
+  const refWeeks = Math.max(weekCount, 52);
+  const cellSize = Math.floor((wrapWidth - (refWeeks - 1) * gap) / refWeeks);
+  const gridCols = `repeat(${weekCount}, ${cellSize}px)`;
   container.style.gridTemplateColumns = gridCols;
   monthsEl.style.gridTemplateColumns = gridCols;
 

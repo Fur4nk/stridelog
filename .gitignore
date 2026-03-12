@@ -1,3 +1,5 @@
 Opentracks/
 __pycache__/
 .env
+app.db
+todo.md
