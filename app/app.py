@@ -1327,6 +1327,15 @@ def admin_assign_orphans():
     return redirect("/admin")
 
 
+@app.route("/admin/orphan-tracks/delete", methods=["POST"])
+@admin_required
+def admin_delete_orphans():
+    count = Track.query.filter_by(user_id=None).delete()
+    db.session.commit()
+    flash(f"{count} orphan tracks deleted.", "success")
+    return redirect("/admin")
+
+
 # --------------- App Routes ---------------
 
 @app.route("/")

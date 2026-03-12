@@ -48,7 +48,8 @@ h1 span { color: var(--accent); }
 
 /* Orphan banner */
 .orphan-banner { background: color-mix(in srgb, var(--yellow) 12%, var(--surface)); border: 1px solid var(--yellow); border-radius: var(--radius); padding: 14px 18px; margin-bottom: 20px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; font-size: 0.9rem; color: var(--yellow); }
-.orphan-banner form { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+.orphan-actions { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+.orphan-actions form { display: flex; align-items: center; gap: 8px; }
 
 /* Card / Section */
 .section { background: var(--surface); border-radius: var(--radius); padding: 20px; margin-bottom: 20px; }
@@ -89,7 +90,7 @@ select:focus { outline: none; border-color: var(--accent); }
   .header-actions { width: 100%; justify-content: flex-start; flex-wrap: wrap; gap: 6px; }
   .form-grid { grid-template-columns: 1fr; }
   .orphan-banner { flex-direction: column; align-items: flex-start; }
-  .orphan-banner form { margin-left: 0; width: 100%; }
+  .orphan-actions { margin-left: 0; width: 100%; }
 }
 </style>
 <script>
@@ -124,14 +125,19 @@ select:focus { outline: none; border-color: var(--accent); }
 <div class="orphan-banner">
   <strong>{{ orphan_count }} orphan track{{ 's' if orphan_count != 1 }} from before authentication.</strong>
   <span>Assign to:</span>
-  <form method="POST" action="/admin/orphan-tracks">
-    <select name="user_id" required>
-      {% for u in users %}
-      <option value="{{ u.id }}">{{ u.email }}</option>
-      {% endfor %}
-    </select>
-    <button type="submit" class="btn btn-primary btn-sm">Assign</button>
-  </form>
+  <div class="orphan-actions">
+    <form method="POST" action="/admin/orphan-tracks">
+      <select name="user_id" required>
+        {% for u in users %}
+        <option value="{{ u.id }}">{{ u.email }}</option>
+        {% endfor %}
+      </select>
+      <button type="submit" class="btn btn-primary btn-sm">Assign</button>
+    </form>
+    <form method="POST" action="/admin/orphan-tracks/delete" onsubmit="return confirm('Delete all {{ orphan_count }} orphan tracks? This cannot be undone.')">
+      <button type="submit" class="btn btn-danger btn-sm">Delete all</button>
+    </form>
+  </div>
 </div>
 {% endif %}
 
