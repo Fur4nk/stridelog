@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>StrideLog - Admin</title>
+<link rel="icon" type="image/svg+xml" href="/static/stridelog-mark-compact-transparent.svg">
+<link rel="icon" type="image/x-icon" href="/static/favicon.ico">
+<meta name="theme-color" content="#0f1117">
+<style>
+:root, [data-theme="dark"] {
+  --bg: #0f1117; --surface: #1a1d27; --surface2: #242836;
+  --accent: #4f8ef7; --secondary: #e84393; --text: #e0e0e0;
+  --text-muted: #8892a4; --green: #00b894; --yellow: #fdcb6e;
+  --red: #ff6b6b; --border: #2d3348; --radius: 10px;
+}
+[data-theme="light"] {
+  --bg: #f0f2f5; --surface: #ffffff; --surface2: #e8eaed;
+  --accent: #3a6fd8; --secondary: #c0325e; --text: #1a1a2e;
+  --text-muted: #5f6b7a; --green: #00895a; --yellow: #c49a1a;
+  --red: #d63031; --border: #d1d5db;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 20px; max-width: 1200px; margin: 0 auto; }
+
+/* Header */
+.header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
+.header-left { display: flex; align-items: center; gap: 12px; }
+h1 { font-size: 1.8rem; }
+h1 span { color: var(--accent); }
+.badge-admin { background: var(--secondary); color: #fff; font-size: 0.7rem; font-weight: 600; padding: 3px 10px; border-radius: 20px; text-transform: uppercase; letter-spacing: 0.5px; vertical-align: middle; margin-left: 8px; }
+.header-actions { display: flex; align-items: center; gap: 8px; }
+.btn { background: var(--surface); border: 1px solid var(--border); color: var(--text); border-radius: var(--radius); padding: 8px 20px; cursor: pointer; font-size: 0.85rem; transition: all 0.2s; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; }
+.btn:hover { border-color: var(--accent); color: var(--accent); }
+.btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn-primary:hover { opacity: 0.9; color: #fff; }
+.btn-danger { background: var(--red); border-color: var(--red); color: #fff; }
+.btn-danger:hover { opacity: 0.9; color: #fff; }
+.btn-sm { padding: 5px 12px; font-size: 0.8rem; }
+.theme-toggle { background: var(--surface); border: 1px solid var(--border); color: var(--text); border-radius: var(--radius); padding: 8px 14px; cursor: pointer; font-size: 0.85rem; transition: all 0.2s; }
+.theme-toggle:hover { border-color: var(--accent); }
+
+/* Flash messages */
+.flash { padding: 12px 18px; border-radius: var(--radius); margin-bottom: 16px; font-size: 0.9rem; }
+.flash-success { background: color-mix(in srgb, var(--green) 15%, var(--surface)); border: 1px solid var(--green); color: var(--green); }
+.flash-error { background: color-mix(in srgb, var(--red) 15%, var(--surface)); border: 1px solid var(--red); color: var(--red); }
+.flash-info { background: color-mix(in srgb, var(--accent) 15%, var(--surface)); border: 1px solid var(--accent); color: var(--accent); }
+
+/* Orphan banner */
+.orphan-banner { background: color-mix(in srgb, var(--yellow) 12%, var(--surface)); border: 1px solid var(--yellow); border-radius: var(--radius); padding: 14px 18px; margin-bottom: 20px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; font-size: 0.9rem; color: var(--yellow); }
+.orphan-banner form { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+
+/* Card / Section */
+.section { background: var(--surface); border-radius: var(--radius); padding: 20px; margin-bottom: 20px; }
+.section h2 { font-size: 1.1rem; margin-bottom: 16px; font-weight: 600; }
+
+/* Table */
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+thead th { text-align: left; padding: 10px 12px; color: var(--text-muted); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+tbody td { padding: 10px 12px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+tbody tr:hover { background: var(--surface2); }
+tbody tr:last-child td { border-bottom: none; }
+.auth-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 500; }
+.auth-local { background: color-mix(in srgb, var(--accent) 20%, var(--surface2)); color: var(--accent); }
+.auth-oidc { background: color-mix(in srgb, var(--green) 20%, var(--surface2)); color: var(--green); }
+.check { color: var(--green); }
+.muted { color: var(--text-muted); }
+
+/* Form */
+.form-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; align-items: end; }
+.form-group { display: flex; flex-direction: column; gap: 4px; }
+.form-group label { font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+.form-group input[type="text"],
+.form-group input[type="email"],
+.form-group input[type="password"] { background: var(--surface2); border: 1px solid var(--border); color: var(--text); border-radius: 6px; padding: 8px 12px; font-size: 0.85rem; }
+.form-group input:focus { outline: none; border-color: var(--accent); }
+.form-check { display: flex; align-items: center; gap: 8px; padding-bottom: 4px; }
+.form-check input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px; }
+.form-check label { font-size: 0.85rem; color: var(--text); }
+select { background: var(--surface2); border: 1px solid var(--border); color: var(--text); border-radius: 6px; padding: 8px 12px; font-size: 0.85rem; }
+select:focus { outline: none; border-color: var(--accent); }
+
+/* Responsive */
+@media (max-width: 768px) {
+  body { padding: 12px; }
+  .header { flex-wrap: wrap; gap: 8px; }
+  .header h1 { font-size: 1.4rem; }
+  .header-actions { width: 100%; justify-content: flex-start; flex-wrap: wrap; gap: 6px; }
+  .form-grid { grid-template-columns: 1fr; }
+  .orphan-banner { flex-direction: column; align-items: flex-start; }
+  .orphan-banner form { margin-left: 0; width: 100%; }
+}
+</style>
+<script>
+  (function() {
+    var t = localStorage.getItem('theme') || 'dark';
+    document.documentElement.setAttribute('data-theme', t);
+  })();
+</script>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-left">
+    <h1><img src="/static/stridelog-mark-main-transparent.svg" alt="" style="height:1.6rem;vertical-align:-0.2rem;margin-right:6px"><span>Stride</span>Log<span class="badge-admin">Admin</span></h1>
+  </div>
+  <div class="header-actions">
+    <a href="/" class="btn">Dashboard</a>
+    <a href="/logout" class="btn">Logout</a>
+    <button class="theme-toggle" onclick="toggleTheme()" title="Toggle theme" id="themeBtn">🌙</button>
+  </div>
+</div>
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+{% if messages %}
+  {% for category, message in messages %}
+  <div class="flash flash-{{ category }}">{{ message }}</div>
+  {% endfor %}
+{% endif %}
+{% endwith %}
+
+{% if orphan_count and orphan_count > 0 %}
+<div class="orphan-banner">
+  <strong>{{ orphan_count }} orphan track{{ 's' if orphan_count != 1 }} from before authentication.</strong>
+  <span>Assign to:</span>
+  <form method="POST" action="/admin/orphan-tracks">
+    <select name="user_id" required>
+      {% for u in users %}
+      <option value="{{ u.id }}">{{ u.email }}</option>
+      {% endfor %}
+    </select>
+    <button type="submit" class="btn btn-primary btn-sm">Assign</button>
+  </form>
+</div>
+{% endif %}
+
+<div class="section">
+  <h2>Users</h2>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Email</th>
+          <th>Auth Method</th>
+          <th>Admin</th>
+          <th>Tracks</th>
+          <th>Created</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for u in users %}
+        <tr>
+          <td><strong>{{ u.email }}</strong>{% if u.id == current_user.id %} <span class="muted">(you)</span>{% endif %}</td>
+          <td>
+            {% if u.oidc_sub %}
+              <span class="auth-badge auth-oidc">OIDC</span>
+            {% elif u.password_hash %}
+              <span class="auth-badge auth-local">Local</span>
+            {% else %}
+              <span class="muted">—</span>
+            {% endif %}
+          </td>
+          <td>{% if u.is_admin %}<span class="check">&#10003;</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+          <td>{{ u.track_count }}</td>
+          <td class="muted">{{ u.created_at[:10] if u.created_at else '—' }}</td>
+          <td>
+            {% if u.id != current_user.id %}
+            <form method="POST" action="/admin/users/{{ u.id }}/delete" style="display:inline" onsubmit="return confirm('Delete user {{ u.email }}? This cannot be undone.')">
+              <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="section">
+  <h2>Add User</h2>
+  <form method="POST" action="/admin/users">
+    <div class="form-grid">
+      <div class="form-group">
+        <label for="email">Email *</label>
+        <input type="email" id="email" name="email" required>
+      </div>
+      <div class="form-group">
+        <label for="password">Password</label>
+        <input type="password" id="password" name="password">
+      </div>
+      <div class="form-group">
+        <label>&nbsp;</label>
+        <div class="form-check">
+          <input type="checkbox" id="is_admin" name="is_admin" value="1">
+          <label for="is_admin">Admin</label>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>&nbsp;</label>
+        <button type="submit" class="btn btn-primary">Add User</button>
+      </div>
+    </div>
+  </form>
+</div>
+
+<script>
+function toggleTheme() {
+  var html = document.documentElement;
+  var current = html.getAttribute('data-theme') || 'dark';
+  var next = current === 'dark' ? 'light' : 'dark';
+  html.setAttribute('data-theme', next);
+  localStorage.setItem('theme', next);
+  updateThemeBtn(next);
+}
+function updateThemeBtn(theme) {
+  var btn = document.getElementById('themeBtn');
+  btn.textContent = theme === 'dark' ? '\uD83C\uDF19' : '\u2600\uFE0F';
+}
+updateThemeBtn(document.documentElement.getAttribute('data-theme') || 'dark');
+</script>
+</body>
+</html>

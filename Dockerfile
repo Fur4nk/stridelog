@@ -2,7 +2,7 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-RUN pip install --no-cache-dir flask flask-sqlalchemy gunicorn
+RUN pip install --no-cache-dir flask flask-sqlalchemy flask-login authlib requests gunicorn
 
 COPY app/ /app/app/
 COPY templates/ /app/templates/
