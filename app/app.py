@@ -144,6 +144,7 @@ class Track(db.Model):
     trackpoints = db.Column(db.Text)
     tags = db.Column(db.Text)
     notes = db.Column(db.Text)
+    extra_data = db.Column(db.Text)
     weather_json = db.Column(db.Text)
     weather_provider = db.Column(db.String(64))
     weather_fetched_at = db.Column(db.String(64))
@@ -232,6 +233,7 @@ with app.app_context():
                         trackpoints TEXT,
                         tags TEXT,
                         notes TEXT,
+                        extra_data TEXT,
                         weather_json TEXT,
                         weather_provider VARCHAR(64),
                         weather_fetched_at VARCHAR(64),
@@ -245,7 +247,7 @@ with app.app_context():
                         elevation_gain_m, elevation_loss_m, avg_hr, max_hr,
                         avg_cadence, calories, moving_time_s, track_id,
                         NULL, NULL, NULL, NULL,
-                        coordinates, trackpoints, tags, notes,
+                        coordinates, trackpoints, tags, notes, NULL,
                         NULL, NULL, NULL, user_id
                     FROM track
                 """))
@@ -259,7 +261,7 @@ with app.app_context():
 
     # Track table migrations
     cols = [c["name"] for c in inspector.get_columns("track")]
-    text_cols = ("started_at", "ended_at", "coordinates", "trackpoints", "tags", "notes", "weather_json", "weather_provider", "weather_fetched_at")
+    text_cols = ("started_at", "ended_at", "coordinates", "trackpoints", "tags", "notes", "extra_data", "weather_json", "weather_provider", "weather_fetched_at")
     float_cols = ("moving_time_s", "start_lat", "start_lon")
     int_cols = ("user_id",)
     for col_name in text_cols + float_cols + int_cols:
@@ -282,6 +284,74 @@ def _needs_setup():
 # --- Query helper ---
 def user_tracks():
     return Track.query.filter_by(user_id=flask_login.current_user.id)
+
+
+def _normalized_activity_type(activity_type):
+    value = (activity_type or "").strip().lower()
+    if value in {"street running", "street_running", "road running", "road_running"}:
+        return "running"
+    if not value or value == "other":
+        return "running"
+    return value
+
+
+COMMON_TRACK_METADATA = {
+    "ground_state": {"dry", "wet"},
+    "perceived_effort": {"low", "medium", "high", "extreme"},
+}
+
+TYPE_SPECIFIC_TRACK_METADATA = {
+    "running": {
+        "surface": {"asphalt", "track", "mixed"},
+        "session_type": {"easy", "workout", "long_run", "race"},
+    },
+    "trail_running": {
+        "surface": {"trail", "gravel", "mixed"},
+        "technicality": {"easy", "medium", "hard"},
+        "mud": {"none", "light", "heavy"},
+    },
+    "cycling": {
+        "surface": {"road", "gravel", "mixed"},
+        "wind_feeling": {"low", "medium", "strong"},
+    },
+    "walking": {
+        "surface": {"asphalt", "trail", "mixed"},
+        "technicality": {"easy", "medium", "hard"},
+    },
+    "hiking": {
+        "surface": {"trail", "mixed"},
+        "technicality": {"easy", "medium", "hard"},
+    },
+}
+
+
+def _sanitize_track_metadata(activity_type, extra_data):
+    if not isinstance(extra_data, dict):
+        return {}
+
+    activity_type = _normalized_activity_type(activity_type)
+    sanitized = {}
+    for key, allowed in COMMON_TRACK_METADATA.items():
+        value = extra_data.get(key)
+        if value in allowed:
+            sanitized[key] = value
+
+    for key, allowed in TYPE_SPECIFIC_TRACK_METADATA.get(activity_type or "other", {}).items():
+        value = extra_data.get(key)
+        if value in allowed:
+            sanitized[key] = value
+
+    return sanitized
+
+
+def _load_track_metadata(track):
+    if not track.extra_data:
+        return {}
+    try:
+        data = json.loads(track.extra_data)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return {}
+    return data if isinstance(data, dict) else {}
 
 
 WEATHER_CODE_LABELS = {
@@ -739,7 +809,7 @@ def parse_gpx_content(xml_bytes, filename="unknown"):
 
     trk = trk_elems[0]
     name = get_text(trk, "name") or filename
-    activity_type = get_text(trk, "type") or "running"
+    activity_type = _normalized_activity_type(get_text(trk, "type"))
 
     trkpts = find_all_recursive(trk, "trkpt")
     if not trkpts:
@@ -809,7 +879,7 @@ def parse_kml_content(xml_bytes, filename="unknown"):
         if data_elem.get("name") == "activityType":
             val = find_child(data_elem, "value")
             if val is not None and val.text:
-                activity_type = val.text.strip()
+                activity_type = _normalized_activity_type(val.text)
                 break
 
     whens = []
@@ -878,7 +948,7 @@ def parse_kml_content(xml_bytes, filename="unknown"):
 
 # --------------- File processing ---------------
 
-def process_file(file_storage, user_id):
+def process_file(file_storage, user_id, extra_data=None):
     filename = file_storage.filename or "unknown"
     data = file_storage.read()
 
@@ -930,6 +1000,9 @@ def process_file(file_storage, user_id):
                 continue
 
         track_data["user_id"] = user_id
+        metadata = _sanitize_track_metadata(track_data.get("activity_type"), extra_data or {})
+        if metadata:
+            track_data["extra_data"] = json.dumps(metadata)
         track = Track(**track_data)
         db.session.add(track)
         try:
@@ -1270,11 +1343,15 @@ def upload():
     files = request.files.getlist("files[]")
     if not files:
         return jsonify({"results": []}), 400
+    try:
+        extra_data = json.loads(request.form.get("track_metadata") or "{}")
+    except (TypeError, ValueError, json.JSONDecodeError):
+        extra_data = {}
 
     uid = flask_login.current_user.id
     all_results = []
     for f in files:
-        results = process_file(f, uid)
+        results = process_file(f, uid, extra_data=extra_data)
         all_results.extend(results)
 
     return jsonify({"results": [[r[0], r[1], r[2]] for r in all_results]})
@@ -1300,7 +1377,7 @@ def add_manual():
     date = d.get("date")
     started_at = d.get("started_at")
     name = d.get("name") or "Manual workout"
-    activity_type = d.get("activity_type") or "running"
+    activity_type = _normalized_activity_type(d.get("activity_type"))
     distance_km = float(d.get("distance_km") or 0)
     duration_min = float(d.get("duration_min") or 0)
     if distance_km <= 0 or duration_min <= 0:
@@ -1312,6 +1389,7 @@ def add_manual():
     duration_s = duration_min * 60
     avg_speed_ms = distance_m / duration_s if duration_s > 0 else 0
     pace = duration_min / distance_km if distance_km > 0 else 0
+    metadata = _sanitize_track_metadata(activity_type, d.get("extra_data") or {})
 
     track = Track(
         filename="manual",
@@ -1331,6 +1409,7 @@ def add_manual():
         calories=float(d.get("calories")) if d.get("calories") else None,
         tags=d.get("tags") or "",
         notes=d.get("notes") or "",
+        extra_data=json.dumps(metadata) if metadata else None,
         user_id=flask_login.current_user.id,
     )
     db.session.add(track)
@@ -1384,7 +1463,7 @@ def api_stats():
             "id": t.id,
             "date": t.date,
             "name": t.name,
-            "activity_type": t.activity_type or "running",
+            "activity_type": _normalized_activity_type(t.activity_type),
             "distance_km": round(dist_km, 2),
             "duration_min": round(duration_min, 2),
             "moving_min": round(moving_min, 2),
@@ -1399,6 +1478,7 @@ def api_stats():
             "cumulative_km": round(cumulative, 2),
             "tags": t.tags or "",
             "notes": t.notes or "",
+            "perceived_effort": _load_track_metadata(t).get("perceived_effort"),
             "weather": weather,
         })
 
@@ -1438,7 +1518,7 @@ def api_track_detail(tid):
         "id": t.id, "name": t.name, "date": t.date,
         "started_at": t.started_at,
         "ended_at": t.ended_at,
-        "activity_type": t.activity_type or "running",
+        "activity_type": _normalized_activity_type(t.activity_type),
         "distance_km": round(dist_km, 2),
         "duration_min": round(duration_min, 2),
         "moving_min": round(moving_min, 2),
@@ -1450,6 +1530,7 @@ def api_track_detail(tid):
         "avg_cadence": round(t.avg_cadence) if t.avg_cadence else None,
         "tags": t.tags or "",
         "notes": t.notes or "",
+        "extra_data": _load_track_metadata(t),
         "trackpoints": tps,
         "splits": splits,
     })
@@ -1489,7 +1570,7 @@ def api_records():
     # Group tracks by sport
     by_sport = {}
     for t in tracks:
-        sport = t.activity_type or "running"
+        sport = _normalized_activity_type(t.activity_type)
         by_sport.setdefault(sport, []).append(t)
 
     all_sports = sorted(by_sport.keys())
@@ -1570,14 +1651,58 @@ def api_records():
 def api_track_update(tid):
     t = Track.query.filter_by(id=tid, user_id=flask_login.current_user.id).first_or_404()
     data = request.get_json(force=True)
+    activity_type = _normalized_activity_type(data.get("activity_type", t.activity_type))
     if "tags" in data:
         t.tags = data["tags"]
     if "notes" in data:
         t.notes = data["notes"]
     if "activity_type" in data:
-        t.activity_type = data["activity_type"]
+        t.activity_type = activity_type
+    if "extra_data" in data:
+        metadata = _sanitize_track_metadata(activity_type, data.get("extra_data") or {})
+        t.extra_data = json.dumps(metadata) if metadata else None
     db.session.commit()
     return jsonify({"ok": True})
+
+
+@app.route("/api/tracks/bulk-metadata", methods=["PUT"])
+@flask_login.login_required
+def api_tracks_bulk_metadata():
+    data = request.get_json(force=True)
+    ids = data.get("ids") or []
+    if not isinstance(ids, list) or not ids:
+        return jsonify({"ok": False, "error": "No tracks selected"}), 400
+
+    track_ids = []
+    for raw_id in ids:
+        try:
+            track_ids.append(int(raw_id))
+        except (TypeError, ValueError):
+            continue
+    if not track_ids:
+        return jsonify({"ok": False, "error": "No valid track ids"}), 400
+
+    payload = data.get("extra_data") or {}
+    if not isinstance(payload, dict):
+        return jsonify({"ok": False, "error": "Invalid metadata payload"}), 400
+
+    tracks = Track.query.filter(
+        Track.user_id == flask_login.current_user.id,
+        Track.id.in_(track_ids),
+    ).all()
+    if not tracks:
+        return jsonify({"ok": False, "error": "Tracks not found"}), 404
+
+    updated = 0
+    for track in tracks:
+        merged = _load_track_metadata(track)
+        merged.update(payload)
+        metadata = _sanitize_track_metadata(track.activity_type, merged)
+        track.extra_data = json.dumps(metadata) if metadata else None
+        updated += 1
+
+    db.session.commit()
+    return jsonify({"ok": True, "updated": updated})
 
 
 @app.route("/api/export/csv")
@@ -1595,7 +1720,7 @@ def export_csv():
         duration_min = (t.duration_s or 0) / 60
         pace = round(duration_min / dist_km, 2) if dist_km > 0 else ""
         writer.writerow([
-            t.date, t.name, t.activity_type or "running",
+            t.date, t.name, _normalized_activity_type(t.activity_type),
             round(dist_km, 2), round(duration_min, 2), pace,
             round((t.avg_speed_ms or 0) * 3.6, 2),
             round((t.max_speed_ms or 0) * 3.6, 2),
@@ -1622,7 +1747,7 @@ def export_json():
         duration_min = (t.duration_s or 0) / 60
         result.append({
             "date": t.date, "name": t.name,
-            "activity_type": t.activity_type or "running",
+            "activity_type": _normalized_activity_type(t.activity_type),
             "distance_km": round(dist_km, 2),
             "duration_min": round(duration_min, 2),
             "pace_min_km": round(duration_min / dist_km, 2) if dist_km > 0 else None,

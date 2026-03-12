@@ -101,7 +101,8 @@ h1 span { color: var(--accent); }
 .pace-green { color: var(--green); }
 .pace-yellow { color: var(--yellow); }
 .pace-red { color: var(--red); }
-.btn-del { background: none; border: 1px solid var(--red); color: var(--red); border-radius: 6px; padding: 4px 10px; cursor: pointer; font-size: 0.8rem; }
+.btn-del { background: none; border: 1px solid var(--red); color: var(--red); border-radius: 6px; width: 32px; height: 32px; cursor: pointer; display:inline-flex; align-items:center; justify-content:center; padding: 0; }
+.btn-del svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .btn-del:hover { background: var(--red); color: #fff; }
 .empty-state { text-align: center; padding: 60px 20px; color: var(--text-muted); }
 
@@ -212,6 +213,22 @@ h1 span { color: var(--accent); }
 .manual-label { display: block; font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.3px; margin-bottom: 4px; }
 .manual-input { width: 100%; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; color: var(--text); font-size: 0.85rem; font-family: inherit; }
 .manual-input:focus { outline: none; border-color: var(--accent); }
+.meta-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px; }
+.meta-card { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 12px; }
+.meta-card h4 { font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 10px; }
+.meta-field { display:flex; flex-direction:column; gap:4px; margin-bottom:10px; }
+.meta-field:last-child { margin-bottom:0; }
+.meta-field label { font-size: 0.75rem; color: var(--text-muted); }
+.detail-edit-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin-bottom: 16px; box-shadow: 0 12px 24px rgba(0,0,0,0.12); }
+.detail-edit-head { display:flex; justify-content:space-between; align-items:flex-start; gap:16px; margin-bottom:16px; padding-bottom:14px; border-bottom:1px solid var(--border); }
+.detail-edit-head h3 { margin:0; font-size:0.95rem; }
+.detail-edit-head p { margin:4px 0 0; color:var(--text-muted); font-size:0.82rem; }
+.detail-edit-grid { display:grid; grid-template-columns:minmax(220px,1fr) minmax(280px,1.15fr); gap:18px; align-items:start; }
+.detail-edit-actions { display:flex; justify-content:flex-end; margin-top:16px; }
+.detail-edit-section label:first-child { margin-top: 0; }
+.detail-edit-card .meta-card { background: transparent; border: none; border-radius: 0; padding: 0; }
+.detail-edit-card .meta-card h4 { margin-bottom: 8px; }
+.detail-edit-card .meta-grid { gap: 10px; }
 
 /* Toast */
 .toast-container { position: fixed; bottom: 20px; right: 20px; z-index: 1000; }
@@ -243,6 +260,7 @@ h1 span { color: var(--accent); }
   .records-row { grid-template-columns: repeat(2, 1fr); gap: 8px; }
   .heatmap-container { padding: 12px 8px 10px; }
   .heatmap, .heatmap-months { gap: 2px; }
+  .detail-edit-grid { grid-template-columns: 1fr; }
 }
 </style>
 </head>
@@ -359,6 +377,7 @@ h1 span { color: var(--accent); }
     <div class="chart-card"><h3>Pace Distribution</h3><canvas id="chartPaceHist"></canvas></div>
     <div class="chart-card"><h3>Elevation Gain / Loss (m)</h3><canvas id="chartElevGainLoss"></canvas></div>
     <div class="chart-card" id="hrChartCard"><h3>Heart Rate</h3><canvas id="chartHR"></canvas></div>
+    <div class="chart-card" id="effortChartCard"><h3>Perceived Effort</h3><canvas id="chartEffort"></canvas></div>
     <div class="chart-card" id="weatherChartCard"><h3>Weather Along Runs</h3><canvas id="chartWeather"></canvas></div>
   </div>
 </div>
@@ -373,6 +392,7 @@ h1 span { color: var(--accent); }
 <div class="tab-content" id="tab-table">
   <div class="compare-bar" id="compareBar">
     <span class="compare-text" id="compareText">0 runs selected</span>
+    <button onclick="openBulkMetadataModal()">Bulk Edit</button>
     <button onclick="doCompare()">Compare</button>
     <button onclick="clearCompare()" style="background:var(--surface);color:var(--text);border:1px solid var(--border)">Clear</button>
   </div>
@@ -382,7 +402,7 @@ h1 span { color: var(--accent); }
   <table class="data-table" id="dataTable">
     <thead>
       <tr>
-        <th></th>
+        <th><input type="checkbox" id="selectAllTracks" aria-label="Select all visible tracks"></th>
         <th data-col="date">Date <span class="sort-arrow"></span></th>
         <th data-col="activity_type">Type <span class="sort-arrow"></span></th>
         <th data-col="name">Name <span class="sort-arrow"></span></th>
@@ -423,28 +443,25 @@ h1 span { color: var(--accent); }
       </div>
       <div id="detailWeather" style="color:var(--text-muted);font-size:0.85rem">Weather not loaded yet.</div>
     </div>
-    <!-- Activity type & Tags/Notes -->
-    <div style="display:flex;gap:16px;margin-bottom:16px;flex-wrap:wrap;align-items:flex-start">
-      <div style="flex:0 0 auto">
-        <label style="font-size:0.75rem;color:var(--text-muted);text-transform:uppercase;display:block;margin-bottom:4px">Activity Type</label>
-        <select id="detailActivityType" style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:6px 10px;color:var(--text);font-size:0.85rem;cursor:pointer;">
-          <option value="running">Running</option>
-          <option value="cycling">Cycling</option>
-          <option value="walking">Walking</option>
-          <option value="hiking">Hiking</option>
-          <option value="trail_running">Trail Running</option>
-          <option value="other">Other</option>
-        </select>
+    <div class="detail-edit-card">
+      <div class="detail-edit-head">
+        <div>
+          <h3>Track Context</h3>
+          <p>Optional metadata, tags and notes for this activity.</p>
+        </div>
       </div>
-      <div style="flex:1;min-width:200px">
-        <label style="font-size:0.75rem;color:var(--text-muted);text-transform:uppercase;display:block;margin-bottom:4px">Tags <span style="font-size:0.65rem;text-transform:none">(Enter to add)</span></label>
-        <div class="tags-input" id="detailTagsInput"><input type="text" id="detailTagField" placeholder="Add tag..."></div>
+      <div class="detail-edit-grid">
+        <div class="detail-edit-section">
+          <div id="detailMetaFields" class="meta-grid"></div>
+        </div>
+        <div class="detail-edit-section">
+          <label style="font-size:0.75rem;color:var(--text-muted);text-transform:uppercase;display:block;margin-bottom:4px">Tags <span style="font-size:0.65rem;text-transform:none">(Enter to add)</span></label>
+          <div class="tags-input" id="detailTagsInput"><input type="text" id="detailTagField" placeholder="Add tag..."></div>
+          <label style="font-size:0.75rem;color:var(--text-muted);text-transform:uppercase;display:block;margin:16px 0 4px">Notes</label>
+          <textarea class="notes-area" id="detailNotes" placeholder="Add notes..."></textarea>
+        </div>
       </div>
-      <div style="flex:1;min-width:200px">
-        <label style="font-size:0.75rem;color:var(--text-muted);text-transform:uppercase;display:block;margin-bottom:4px">Notes</label>
-        <textarea class="notes-area" id="detailNotes" placeholder="Add notes..."></textarea>
-      </div>
-      <div style="flex:0 0 auto;align-self:flex-end">
+      <div class="detail-edit-actions">
         <button id="detailSaveMeta" style="background:var(--accent);border:none;color:#fff;border-radius:6px;padding:8px 16px;cursor:pointer;font-size:0.85rem">Save</button>
       </div>
     </div>
@@ -508,12 +525,11 @@ h1 span { color: var(--accent); }
         <div>
           <label class="manual-label">Activity Type</label>
           <select id="manType" class="manual-input">
-            <option value="running">Running</option>
+            <option value="running">Street Running</option>
             <option value="cycling">Cycling</option>
             <option value="walking">Walking</option>
             <option value="hiking">Hiking</option>
             <option value="trail_running">Trail Running</option>
-            <option value="other">Other</option>
           </select>
         </div>
       </div>
@@ -555,7 +571,43 @@ h1 span { color: var(--accent); }
         <label class="manual-label">Notes</label>
         <textarea id="manNotes" class="manual-input" style="resize:vertical;min-height:50px" placeholder="Optional notes..."></textarea>
       </div>
+      <div>
+        <label class="manual-label">Track Metadata</label>
+        <div id="manualMetaFields" class="meta-grid"></div>
+      </div>
       <button id="manSave" style="background:var(--accent);border:none;color:#fff;border-radius:var(--radius);padding:10px;cursor:pointer;font-size:0.9rem;font-weight:600;margin-top:4px">Save Workout</button>
+    </div>
+  </div>
+</div>
+
+<!-- Import Metadata Modal -->
+<div class="modal-overlay" id="importModal">
+  <div class="modal" style="max-width:620px">
+    <button class="modal-close" onclick="closeImportModal()">&times;</button>
+    <h2>Import Tracks</h2>
+    <div class="modal-subtitle" id="importSubtitle">Optional metadata applied to all selected files.</div>
+    <div style="display:grid;gap:12px;margin-top:16px">
+      <div id="importMetaFields" class="meta-grid"></div>
+      <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap">
+        <button type="button" onclick="closeImportModal()" class="btn-import" style="margin:0">Cancel</button>
+        <button type="button" id="confirmImportBtn" class="btn-import" style="margin:0;background:var(--accent);border-color:var(--accent);color:#fff">Import</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Bulk Metadata Modal -->
+<div class="modal-overlay" id="bulkMetadataModal">
+  <div class="modal" style="max-width:620px">
+    <button class="modal-close" onclick="closeBulkMetadataModal()">&times;</button>
+    <h2>Bulk Edit Metadata</h2>
+    <div class="modal-subtitle" id="bulkMetadataSubtitle">Apply optional metadata to selected tracks.</div>
+    <div style="display:grid;gap:12px;margin-top:16px">
+      <div id="bulkMetaFields" class="meta-grid"></div>
+      <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap">
+        <button type="button" onclick="closeBulkMetadataModal()" class="btn-import" style="margin:0">Cancel</button>
+        <button type="button" id="bulkMetadataSaveBtn" class="btn-import" style="margin:0;background:var(--accent);border-color:var(--accent);color:#fff">Save</button>
+      </div>
     </div>
   </div>
 </div>
@@ -573,6 +625,102 @@ let statsData = [];     // filtered by period
 let sortCol = 'date', sortAsc = false;
 let leafletMap = null;
 let mapLayers = [];
+let pendingImportFiles = null;
+let currentBulkMetadataType = 'running';
+let currentBulkMetadataCommonOnly = false;
+
+const TRACK_METADATA_FIELDS = {
+  common: [
+    { key: 'ground_state', label: 'Ground State', options: [
+      { value: '', label: 'Not set' },
+      { value: 'dry', label: 'Dry' },
+      { value: 'wet', label: 'Wet' },
+    ]},
+    { key: 'perceived_effort', label: 'Perceived Effort', options: [
+      { value: '', label: 'Not set' },
+      { value: 'low', label: '🙂 Low' },
+      { value: 'medium', label: '😐 Medium' },
+      { value: 'high', label: '😣 High' },
+      { value: 'extreme', label: '😵 Extreme' },
+    ]},
+  ],
+  running: [
+    { key: 'surface', label: 'Surface', options: [
+      { value: '', label: 'Not set' },
+      { value: 'asphalt', label: 'Asphalt' },
+      { value: 'track', label: 'Track' },
+      { value: 'mixed', label: 'Mixed' },
+    ]},
+    { key: 'session_type', label: 'Session Type', options: [
+      { value: '', label: 'Not set' },
+      { value: 'easy', label: 'Easy' },
+      { value: 'workout', label: 'Workout' },
+      { value: 'long_run', label: 'Long Run' },
+      { value: 'race', label: 'Race' },
+    ]},
+  ],
+  trail_running: [
+    { key: 'surface', label: 'Surface', options: [
+      { value: '', label: 'Not set' },
+      { value: 'trail', label: 'Trail' },
+      { value: 'gravel', label: 'Gravel' },
+      { value: 'mixed', label: 'Mixed' },
+    ]},
+    { key: 'technicality', label: 'Technicality', options: [
+      { value: '', label: 'Not set' },
+      { value: 'easy', label: 'Easy' },
+      { value: 'medium', label: 'Medium' },
+      { value: 'hard', label: 'Hard' },
+    ]},
+    { key: 'mud', label: 'Mud', options: [
+      { value: '', label: 'Not set' },
+      { value: 'none', label: 'None' },
+      { value: 'light', label: 'Light' },
+      { value: 'heavy', label: 'Heavy' },
+    ]},
+  ],
+  cycling: [
+    { key: 'surface', label: 'Surface', options: [
+      { value: '', label: 'Not set' },
+      { value: 'road', label: 'Road' },
+      { value: 'gravel', label: 'Gravel' },
+      { value: 'mixed', label: 'Mixed' },
+    ]},
+    { key: 'wind_feeling', label: 'Wind', options: [
+      { value: '', label: 'Not set' },
+      { value: 'low', label: 'Low' },
+      { value: 'medium', label: 'Medium' },
+      { value: 'strong', label: 'Strong' },
+    ]},
+  ],
+  walking: [
+    { key: 'surface', label: 'Surface', options: [
+      { value: '', label: 'Not set' },
+      { value: 'asphalt', label: 'Asphalt' },
+      { value: 'trail', label: 'Trail' },
+      { value: 'mixed', label: 'Mixed' },
+    ]},
+    { key: 'technicality', label: 'Technicality', options: [
+      { value: '', label: 'Not set' },
+      { value: 'easy', label: 'Easy' },
+      { value: 'medium', label: 'Medium' },
+      { value: 'hard', label: 'Hard' },
+    ]},
+  ],
+  hiking: [
+    { key: 'surface', label: 'Surface', options: [
+      { value: '', label: 'Not set' },
+      { value: 'trail', label: 'Trail' },
+      { value: 'mixed', label: 'Mixed' },
+    ]},
+    { key: 'technicality', label: 'Technicality', options: [
+      { value: '', label: 'Not set' },
+      { value: 'easy', label: 'Easy' },
+      { value: 'medium', label: 'Medium' },
+      { value: 'hard', label: 'Hard' },
+    ]},
+  ],
+};
 
 // --- Data Menu ---
 $('#dataMenuBtn').addEventListener('click', e => {
@@ -599,16 +747,19 @@ $('#restoreInput').addEventListener('change', async function() {
 // --- Manual Workout ---
 function openManual() {
   $('#manDate').value = new Date().toISOString().slice(0, 10);
+  renderTrackMetadataEditor('manualMetaFields', $('#manType').value, {});
   $('#manualModal').classList.add('active');
 }
 function closeManual() { $('#manualModal').classList.remove('active'); }
 $('#manualModal').addEventListener('click', e => { if (e.target === $('#manualModal')) closeManual(); });
+$('#manType').addEventListener('change', () => renderTrackMetadataEditor('manualMetaFields', $('#manType').value, collectTrackMetadata('manualMetaFields', $('#manType').value)));
 
 $('#manSave').addEventListener('click', async () => {
+  const activityType = $('#manType').value;
   const data = {
     date: $('#manDate').value,
     name: $('#manName').value,
-    activity_type: $('#manType').value,
+    activity_type: activityType,
     distance_km: parseFloat($('#manDistance').value) || 0,
     duration_min: parseFloat($('#manDuration').value) || 0,
     elevation_gain: parseFloat($('#manElevGain').value) || 0,
@@ -616,6 +767,7 @@ $('#manSave').addEventListener('click', async () => {
     avg_hr: $('#manAvgHR').value || null,
     calories: $('#manCalories').value || null,
     notes: $('#manNotes').value,
+    extra_data: collectTrackMetadata('manualMetaFields', activityType),
   };
   if (!data.date || !data.distance_km || !data.duration_min) {
     toast('Date, distance and duration are required');
@@ -633,6 +785,7 @@ $('#manSave').addEventListener('click', async () => {
       closeManual();
       // Reset form
       ['#manName','#manDistance','#manDuration','#manElevGain','#manElevLoss','#manAvgHR','#manCalories','#manNotes'].forEach(s => $(s).value = '');
+      renderTrackMetadataEditor('manualMetaFields', $('#manType').value, {});
       loadData();
     } else {
       toast(result.error || 'Error saving workout');
@@ -643,16 +796,21 @@ $('#manSave').addEventListener('click', async () => {
 // --- Sport helpers ---
 function sportBadgeClass(type) {
   if (!type) return 'other';
-  const t = type.toLowerCase();
+  const t = normalizeActivityType(type);
   if (t.includes('run')) return 'running';
   if (t.includes('cycl') || t.includes('bik')) return 'cycling';
   if (t.includes('walk') || t.includes('hik')) return 'walking';
   return 'other';
 }
+function normalizeActivityType(type) {
+  const t = (type || '').toLowerCase().trim();
+  if (!t || t === 'other') return 'running';
+  if (t === 'street running' || t === 'street_running' || t === 'road running' || t === 'road_running') return 'running';
+  return t;
+}
 function sportLabel(type) {
-  if (!type) return 'Run';
-  const t = type.toLowerCase();
-  if (t === 'running') return 'Run';
+  const t = normalizeActivityType(type);
+  if (t === 'running') return 'Street running';
   if (t === 'cycling') return 'Bike';
   if (t === 'walking') return 'Walk';
   if (t === 'hiking') return 'Hike';
@@ -704,6 +862,44 @@ function formatLocalDateTime(value) {
   return dt.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
 }
 
+function getTrackMetadataFields(activityType, commonOnly) {
+  const normalizedType = normalizeActivityType(activityType);
+  return commonOnly ? [...TRACK_METADATA_FIELDS.common] : [...TRACK_METADATA_FIELDS.common, ...(TRACK_METADATA_FIELDS[normalizedType] || [])];
+}
+
+function renderTrackMetadataEditor(containerId, activityType, values, commonOnly, flatLayout) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  const normalizedType = normalizeActivityType(activityType);
+  const groups = [];
+  groups.push({ title: 'Common', fields: TRACK_METADATA_FIELDS.common });
+  const specific = commonOnly ? [] : (TRACK_METADATA_FIELDS[normalizedType] || []);
+  if (specific.length) groups.push({ title: sportLabel(normalizedType), fields: specific });
+
+  container.innerHTML = groups.map(group => `
+    <div class="meta-card">
+      ${flatLayout ? '' : `<h4>${group.title}</h4>`}
+      ${group.fields.map(field => `
+        <div class="meta-field">
+          <label for="${containerId}-${field.key}">${field.label}</label>
+          <select id="${containerId}-${field.key}" class="manual-input">
+            ${field.options.map(opt => `<option value="${opt.value}" ${((values && values[field.key]) || '') === opt.value ? 'selected' : ''}>${opt.label}</option>`).join('')}
+          </select>
+        </div>
+      `).join('')}
+    </div>
+  `).join('');
+}
+
+function collectTrackMetadata(containerId, activityType, commonOnly) {
+  const values = {};
+  getTrackMetadataFields(activityType, commonOnly).forEach(field => {
+    const el = document.getElementById(`${containerId}-${field.key}`);
+    if (el && el.value) values[field.key] = el.value;
+  });
+  return values;
+}
+
 // --- Toast ---
 function toast(msg) {
   const el = document.createElement('div');
@@ -726,19 +922,44 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
 // --- Upload ---
 const fileInput = $('#fileInput');
 $('#btnImport').addEventListener('click', () => fileInput.click());
-fileInput.addEventListener('change', () => { handleFiles(fileInput.files); fileInput.value = ''; });
+fileInput.addEventListener('change', () => {
+  openImportModal(fileInput.files);
+  fileInput.value = '';
+});
 
 // Global drag & drop
 let dragCounter = 0;
 document.addEventListener('dragenter', e => { e.preventDefault(); dragCounter++; $('#dropOverlay').classList.add('active'); });
 document.addEventListener('dragleave', e => { e.preventDefault(); dragCounter--; if (dragCounter <= 0) { dragCounter = 0; $('#dropOverlay').classList.remove('active'); } });
 document.addEventListener('dragover', e => e.preventDefault());
-document.addEventListener('drop', e => { e.preventDefault(); dragCounter = 0; $('#dropOverlay').classList.remove('active'); handleFiles(e.dataTransfer.files); });
+document.addEventListener('drop', e => { e.preventDefault(); dragCounter = 0; $('#dropOverlay').classList.remove('active'); openImportModal(e.dataTransfer.files); });
 
-async function handleFiles(files) {
+function openImportModal(files) {
+  if (!files || !files.length) return;
+  pendingImportFiles = files;
+  $('#importSubtitle').textContent = `${files.length} file(s) selected. Optional metadata will be applied to all imported tracks in this batch.`;
+  renderTrackMetadataEditor('importMetaFields', 'running', {}, false, true);
+  $('#importModal').classList.add('active');
+}
+
+function closeImportModal() {
+  $('#importModal').classList.remove('active');
+  pendingImportFiles = null;
+}
+
+$('#importModal').addEventListener('click', e => { if (e.target === $('#importModal')) closeImportModal(); });
+
+$('#confirmImportBtn').addEventListener('click', async () => {
+  if (!pendingImportFiles || !pendingImportFiles.length) return;
+  await handleFiles(pendingImportFiles, collectTrackMetadata('importMetaFields', 'running'));
+  closeImportModal();
+});
+
+async function handleFiles(files, extraData) {
   if (!files.length) return;
   const fd = new FormData();
   for (const f of files) fd.append('files[]', f);
+  fd.append('track_metadata', JSON.stringify(extraData || {}));
   try {
     const res = await fetch('/upload', { method: 'POST', body: fd });
     const data = await res.json();
@@ -774,7 +995,7 @@ $('#periodFilter').addEventListener('change', applyFilter);
 $('#activityFilter').addEventListener('change', applyFilter);
 
 function populateActivityFilter() {
-  const types = new Set(allStatsData.map(r => r.activity_type || 'running'));
+  const types = new Set(allStatsData.map(r => normalizeActivityType(r.activity_type)));
   const sel = $('#activityFilter');
   const current = sel.value;
   sel.innerHTML = '<option value="all">All activities</option>';
@@ -791,7 +1012,7 @@ function applyFilter() {
   let data = filterByPeriod(allStatsData);
   const actFilter = $('#activityFilter').value;
   if (actFilter !== 'all') {
-    data = data.filter(r => (r.activity_type || 'running') === actFilter);
+    data = data.filter(r => normalizeActivityType(r.activity_type) === actFilter);
   }
   statsData = data;
   // Recompute cumulative for filtered data
@@ -866,19 +1087,22 @@ function renderTable() {
   tbody.innerHTML = rows.map(r => {
     const bc = sportBadgeClass(r.activity_type);
     const tagsHtml = r.tags ? r.tags.split(',').filter(Boolean).map(t => `<span class="tag">${t.trim()}</span>`).join('') : '';
+    const movingText = formatDuration(r.moving_min || r.duration_min);
+    const totalText = formatDuration(r.duration_min);
+    const showTotalTime = r.moving_min && Math.abs(r.moving_min - r.duration_min) > 0.5 && movingText !== totalText;
     return `<tr>
     <td><input type="checkbox" class="cmp-check" data-id="${r.id}" ${compareSet.has(r.id)?'checked':''}></td>
     <td class="clickable-row" data-id="${r.id}" style="cursor:pointer;color:var(--accent)">${r.date}</td>
     <td><span class="sport-badge ${bc}">${sportLabel(r.activity_type)}</span></td>
     <td class="clickable-row" data-id="${r.id}" style="cursor:pointer">${r.name}${tagsHtml ? ' ' + tagsHtml : ''}</td>
     <td>${r.distance_km.toFixed(2)} km</td>
-    <td>${formatDuration(r.moving_min || r.duration_min)}${r.moving_min && Math.abs(r.moving_min - r.duration_min) > 0.5 ? ' <span style="color:var(--text-muted);font-size:0.75rem">(' + formatDuration(r.duration_min) + ')</span>' : ''}</td>
+    <td>${movingText}${showTotalTime ? ' <span style="color:var(--text-muted);font-size:0.75rem">(' + totalText + ')</span>' : ''}</td>
     <td class="${paceClass(r.pace_min_km)}">${formatPace(r.pace_min_km)}/km</td>
     <td>${r.avg_speed_kmh.toFixed(1)} km/h</td>
     <td>${r.elevation_gain.toFixed(0)} m</td>
     <td>${r.avg_hr || '-'}</td>
     <td>${r.max_hr || '-'}</td>
-    <td><button class="btn-del" onclick="event.stopPropagation();deleteTrack(${r.id})">Del</button></td>
+    <td><button class="btn-del" onclick="event.stopPropagation();deleteTrack(${r.id})" aria-label="Delete workout" title="Delete workout"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M7 7l1 13h8l1-13"/><path d="M10 11v6"/><path d="M14 11v6"/></svg></button></td>
   </tr>`; }).join('');
 
   // Click to open detail
@@ -891,17 +1115,31 @@ function renderTable() {
     cb.addEventListener('change', () => {
       const id = parseInt(cb.dataset.id);
       if (cb.checked) {
-        if (compareSet.size >= 5) { cb.checked = false; return; }
         compareSet.add(id);
       } else {
         compareSet.delete(id);
       }
       updateCompareBar();
+      updateSelectAllCheckbox(rows);
     });
   });
 
+  updateSelectAllCheckbox(rows);
   $('#emptyState').style.display = rows.length ? 'none' : 'block';
   $('#dataTable').style.display = rows.length ? '' : 'none';
+}
+
+function updateSelectAllCheckbox(rows) {
+  const selectAll = $('#selectAllTracks');
+  if (!selectAll) return;
+  if (!rows.length) {
+    selectAll.checked = false;
+    selectAll.indeterminate = false;
+    return;
+  }
+  const selectedCount = rows.filter(r => compareSet.has(r.id)).length;
+  selectAll.checked = selectedCount === rows.length;
+  selectAll.indeterminate = selectedCount > 0 && selectedCount < rows.length;
 }
 
 function updateCompareBar() {
@@ -914,6 +1152,65 @@ function updateCompareBar() {
   }
 }
 function clearCompare() { compareSet.clear(); updateCompareBar(); renderTable(); }
+
+$('#selectAllTracks').addEventListener('change', e => {
+  const filter = ($('#searchInput').value || '').toLowerCase();
+  const visibleRows = statsData.filter(r => (r.date + ' ' + r.name + ' ' + (r.activity_type || '') + ' ' + (r.tags || '')).toLowerCase().includes(filter));
+  if (e.target.checked) {
+    visibleRows.forEach(r => compareSet.add(r.id));
+  } else {
+    visibleRows.forEach(r => compareSet.delete(r.id));
+  }
+  updateCompareBar();
+  renderTable();
+});
+
+function openBulkMetadataModal() {
+  if (!compareSet.size) {
+    toast('Select at least 1 track');
+    return;
+  }
+  const selectedRows = allStatsData.filter(r => compareSet.has(r.id));
+  const types = [...new Set(selectedRows.map(r => normalizeActivityType(r.activity_type)))];
+  currentBulkMetadataCommonOnly = types.length !== 1;
+  currentBulkMetadataType = types.length === 1 ? types[0] : 'running';
+  $('#bulkMetadataSubtitle').textContent = currentBulkMetadataCommonOnly
+    ? `${selectedRows.length} tracks selected. Mixed activity types: only common fields are available.`
+    : `${selectedRows.length} tracks selected. Changes will be applied to all selected ${sportLabel(currentBulkMetadataType).toLowerCase()} tracks.`;
+  renderTrackMetadataEditor('bulkMetaFields', currentBulkMetadataType, {}, currentBulkMetadataCommonOnly, true);
+  $('#bulkMetadataModal').classList.add('active');
+}
+
+function closeBulkMetadataModal() {
+  $('#bulkMetadataModal').classList.remove('active');
+}
+
+$('#bulkMetadataModal').addEventListener('click', e => {
+  if (e.target === $('#bulkMetadataModal')) closeBulkMetadataModal();
+});
+
+$('#bulkMetadataSaveBtn').addEventListener('click', async () => {
+  if (!compareSet.size) return;
+  const extra_data = collectTrackMetadata('bulkMetaFields', currentBulkMetadataType, currentBulkMetadataCommonOnly);
+  if (!Object.keys(extra_data).length) {
+    toast('Select at least 1 metadata value');
+    return;
+  }
+  try {
+    const res = await fetch('/api/tracks/bulk-metadata', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids: [...compareSet], extra_data }),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.ok) throw new Error(data.error || 'Bulk update failed');
+    toast(`Updated ${data.updated} track(s)`);
+    closeBulkMetadataModal();
+    loadData();
+  } catch (e) {
+    toast('Bulk save failed: ' + e.message);
+  }
+});
 
 $('#searchInput').addEventListener('input', renderTable);
 
@@ -1057,6 +1354,36 @@ function renderCharts() {
         ],
       },
       options: opts,
+    });
+  }
+
+  // Perceived effort chart (hide if no data)
+  const effortOrder = ['low', 'medium', 'high', 'extreme'];
+  const effortLabels = { low: 'Low 🙂', medium: 'Medium 😐', high: 'High 😣', extreme: 'Extreme 😵' };
+  const effortCounts = { low: 0, medium: 0, high: 0, extreme: 0 };
+  statsData.forEach(r => {
+    if (effortCounts[r.perceived_effort] != null) effortCounts[r.perceived_effort] += 1;
+  });
+  const hasEffort = effortOrder.some(key => effortCounts[key] > 0);
+  $('#effortChartCard').style.display = hasEffort ? '' : 'none';
+  if (hasEffort) {
+    charts.effort = new Chart($('#chartEffort'), {
+      type: 'doughnut',
+      data: {
+        labels: effortOrder.map(key => effortLabels[key]),
+        datasets: [{
+          label: 'runs',
+          data: effortOrder.map(key => effortCounts[key]),
+          backgroundColor: [cc.greenAlpha, cc.yellowAlpha, cc.orangeAlpha, cc.redAlpha],
+          borderColor: [cc.green, cc.yellow, cc.orange, cc.red],
+          borderWidth: 1,
+        }],
+      },
+      options: {
+        ...opts,
+        aspectRatio: 2,
+        plugins: { ...opts.plugins, legend: { display: true } },
+      },
     });
   }
 
@@ -1282,6 +1609,7 @@ function renderRecordsTab() {
 let detailMap = null;
 let detailCharts = {};
 let currentDetailId = null;
+let currentDetailActivityType = 'running';
 
 function renderWeather(data) {
   const root = $('#detailWeather');
@@ -1354,8 +1682,9 @@ async function openDetail(id, splitM) {
   );
   $('#detailStats').innerHTML = statsItems.map(([l, v]) => `<div class="ms"><div class="ms-val">${v}</div><div class="ms-lbl">${l}</div></div>`).join('');
 
-  // Activity type, tags, notes
-  $('#detailActivityType').value = d.activity_type || 'running';
+  // Tags, notes and optional metadata bound to the real activity type
+  currentDetailActivityType = normalizeActivityType(d.activity_type);
+  renderTrackMetadataEditor('detailMetaFields', currentDetailActivityType, d.extra_data || {}, false, true);
   // Tags
   const tagsContainer = $('#detailTagsInput');
   tagsContainer.querySelectorAll('.tag').forEach(t => t.remove());
@@ -1451,6 +1780,18 @@ function closeDetail() {
 $('#detailModal').addEventListener('click', e => { if (e.target === $('#detailModal')) closeDetail(); });
 $('#splitDistance').addEventListener('change', () => { if (currentDetailId) openDetail(currentDetailId); });
 $('#detailWeatherRefresh').addEventListener('click', () => { if (currentDetailId) loadWeatherDetail(currentDetailId, true); });
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  if ($('#bulkMetadataModal').classList.contains('active')) {
+    closeBulkMetadataModal();
+    return;
+  }
+  if ($('#compareModal').classList.contains('active')) {
+    closeCompare();
+    return;
+  }
+  if ($('#detailModal').classList.contains('active')) closeDetail();
+});
 
 // Tag input
 $('#detailTagField').addEventListener('keydown', e => {
@@ -1469,17 +1810,17 @@ $('#detailTagField').addEventListener('keydown', e => {
   }
 });
 
-// Save activity type, tags, notes
+// Save tags, notes and optional metadata
 $('#detailSaveMeta').addEventListener('click', async () => {
   if (!currentDetailId) return;
   const tags = [...$('#detailTagsInput').querySelectorAll('.tag')].map(t => t.textContent).join(',');
   const notes = $('#detailNotes').value;
-  const activity_type = $('#detailActivityType').value;
+  const extra_data = collectTrackMetadata('detailMetaFields', currentDetailActivityType);
   try {
     await fetch('/api/track/' + currentDetailId, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tags, notes, activity_type }),
+      body: JSON.stringify({ tags, notes, extra_data }),
     });
     toast('Saved');
     loadData();
@@ -1494,6 +1835,7 @@ const compareColors = ['#4f8ef7', '#e84393', '#00b894', '#fdcb6e', '#a29bfe'];
 
 async function doCompare() {
   if (compareSet.size < 2) { toast('Select at least 2 runs to compare'); return; }
+  if (compareSet.size > 5) toast('Compare uses the first 5 selected tracks');
   const ids = [...compareSet].slice(0, 5);
   const runs = await Promise.all(ids.map(id => fetch('/api/track/' + id).then(r => r.json())));
 
