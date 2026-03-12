@@ -254,17 +254,23 @@ h1 span { color: var(--accent); }
     <button class="btn-import" id="btnImport">+ Import</button>
     <button class="btn-import" id="btnManual" onclick="openManual()">+ Manual</button>
     <input type="file" id="fileInput" multiple accept=".gpx,.kmz,.kml" hidden>
+    <button class="theme-toggle" id="themeToggle" title="Toggle theme">&#9790;</button>
     <div class="data-menu">
-      <button class="data-menu-btn" id="dataMenuBtn" title="Data">&#9776; Data</button>
+      <button class="data-menu-btn" id="dataMenuBtn" title="Menu">&#9776;</button>
       <div class="data-menu-dropdown" id="dataMenuDropdown">
         <a href="/api/export/csv" download>Export CSV</a>
         <a href="/api/export/json" download>Export JSON</a>
+        {% if is_admin %}
         <hr>
         <a href="/api/backup" download>Backup Database</a>
         <label id="restoreLabel">Restore Database<input type="file" id="restoreInput" accept=".db" hidden></label>
+        <hr>
+        <a href="/admin">Admin Panel</a>
+        {% endif %}
+        <hr>
+        <a href="/logout">Logout</a>
       </div>
     </div>
-    <button class="theme-toggle" id="themeToggle" title="Toggle theme">&#9790;</button>
   </div>
 </div>
 
@@ -409,6 +415,13 @@ h1 span { color: var(--accent); }
     <h2 id="detailTitle"></h2>
     <div class="modal-subtitle" id="detailSubtitle"></div>
     <div class="modal-stats" id="detailStats"></div>
+    <div class="chart-card" style="margin-bottom:16px">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px;flex-wrap:wrap">
+        <h3 style="margin:0">Weather</h3>
+        <button type="button" id="detailWeatherRefresh" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:6px 10px;cursor:pointer;font-size:0.8rem">Refresh</button>
+      </div>
+      <div id="detailWeather" style="color:var(--text-muted);font-size:0.85rem">Weather not loaded yet.</div>
+    </div>
     <!-- Activity type & Tags/Notes -->
     <div style="display:flex;gap:16px;margin-bottom:16px;flex-wrap:wrap;align-items:flex-start">
       <div style="flex:0 0 auto">
@@ -682,6 +695,12 @@ function formatDuration(mins) {
   const h = Math.floor(mins / 60);
   const m = Math.round(mins % 60);
   return h > 0 ? h + 'h ' + m + 'm' : m + 'm';
+}
+function formatLocalDateTime(value) {
+  if (!value) return '-';
+  const dt = new Date(value);
+  if (Number.isNaN(dt.getTime())) return value;
+  return dt.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
 }
 
 // --- Toast ---
@@ -1210,6 +1229,52 @@ let detailMap = null;
 let detailCharts = {};
 let currentDetailId = null;
 
+function renderWeather(data) {
+  const root = $('#detailWeather');
+  if (!data || !data.available) {
+    root.innerHTML = `<div style="color:var(--text-muted);font-size:0.85rem">${(data && data.error) || 'Weather unavailable for this workout.'}</div>`;
+    return;
+  }
+
+  const snapshotHtml = (data.snapshots || []).map(s => `
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px">
+      <div style="font-size:0.72rem;text-transform:uppercase;color:var(--text-muted);margin-bottom:6px">${s.label} · ${formatLocalDateTime(s.time)}</div>
+      <div style="font-size:1.2rem;font-weight:700">${s.temperature_c != null ? s.temperature_c + '°C' : '-'}</div>
+      <div style="font-size:0.82rem;color:var(--text-muted);margin-top:4px">${s.weather_label || '-'}</div>
+      <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 12px;margin-top:10px;font-size:0.82rem">
+        <div>Feels like: ${s.apparent_temperature_c != null ? s.apparent_temperature_c + '°C' : '-'}</div>
+        <div>Humidity: ${s.relative_humidity_pct != null ? s.relative_humidity_pct + '%' : '-'}</div>
+        <div>Wind: ${s.wind_speed_kmh != null ? s.wind_speed_kmh + ' km/h' : '-'}</div>
+        <div>Clouds: ${s.cloud_cover_pct != null ? s.cloud_cover_pct + '%' : '-'}</div>
+        <div>Rain rate: ${s.precipitation_mm_per_hour != null ? s.precipitation_mm_per_hour + ' mm/h' : '-'}</div>
+        <div>Code: ${s.weather_code != null ? s.weather_code : '-'}</div>
+      </div>
+    </div>
+  `).join('');
+
+  root.innerHTML = `
+    <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px;font-size:0.82rem;color:var(--text-muted)">
+      <div>${data.provider_label} · ${data.resolution}</div>
+      <div>Time source: ${data.time_accuracy || 'exact'} · Total rain during run: ${data.precipitation_total_mm != null ? data.precipitation_total_mm + ' mm' : '-'}</div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px">${snapshotHtml}</div>
+  `;
+}
+
+async function loadWeatherDetail(id, refresh) {
+  $('#detailWeather').innerHTML = '<div style="color:var(--text-muted);font-size:0.85rem">Loading weather...</div>';
+  try {
+    const url = '/api/track/' + id + '/weather' + (refresh ? '?refresh=1' : '');
+    const res = await fetch(url);
+    const data = await res.json();
+    if (currentDetailId !== id) return;
+    renderWeather(data);
+  } catch (e) {
+    if (currentDetailId !== id) return;
+    renderWeather({ available: false, error: 'Weather request failed: ' + e.message });
+  }
+}
+
 async function openDetail(id, splitM) {
   currentDetailId = id;
   splitM = splitM || parseInt($('#splitDistance').value) || 1000;
@@ -1253,6 +1318,7 @@ async function openDetail(id, splitM) {
 
   // Show modal
   $('#detailModal').classList.add('active');
+  loadWeatherDetail(id, false);
 
   // Map
   setTimeout(() => {
@@ -1326,9 +1392,11 @@ function closeDetail() {
   if (detailMap) { detailMap.remove(); detailMap = null; }
   Object.values(detailCharts).forEach(c => c.destroy());
   detailCharts = {};
+  $('#detailWeather').innerHTML = 'Weather not loaded yet.';
 }
 $('#detailModal').addEventListener('click', e => { if (e.target === $('#detailModal')) closeDetail(); });
 $('#splitDistance').addEventListener('change', () => { if (currentDetailId) openDetail(currentDetailId); });
+$('#detailWeatherRefresh').addEventListener('click', () => { if (currentDetailId) loadWeatherDetail(currentDetailId, true); });
 
 // Tag input
 $('#detailTagField').addEventListener('keydown', e => {
