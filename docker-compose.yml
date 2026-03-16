@@ -1,6 +1,6 @@
 services:
   stridelog:
-    build: .
+    image: drfr4nk/stridelog:latest
     container_name: stridelog
     env_file:
       - .env
