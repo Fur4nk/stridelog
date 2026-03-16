@@ -4,7 +4,15 @@ Applicazione web self-hosted per analizzare allenamenti di corsa esportati da Op
 
 Supporta import di file KMZ con parsing automatico di distanza, passo, dislivello, frequenza cardiaca e cadenza.
 
-## Quick Start
+## Installazione
+
+L'immagine Docker è disponibile su Docker Hub:
+
+```bash
+docker pull drfr4nk/stridelog:latest
+```
+
+### Quick Start
 
 ```bash
 cp .env.example .env
