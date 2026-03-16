@@ -3,3 +3,4 @@ __pycache__/
 .env
 app.db
 todo.md
+docs/feature-mobile-import.md

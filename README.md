@@ -1,47 +1,87 @@
 # StrideLog
 
-Self-hosted web application for analyzing running workouts exported from OpenTracks (Android).
+Applicazione web self-hosted per analizzare allenamenti di corsa esportati da OpenTracks (Android).
 
-Supports GPX 1.1, KML 2.3, and KMZ file imports with automatic parsing of distance, pace, elevation, heart rate, and cadence data.
+Supporta import di file KMZ con parsing automatico di distanza, passo, dislivello, frequenza cardiaca e cadenza.
 
 ## Quick Start
 
 ```bash
 cp .env.example .env
-# edit .env to enable OIDC login or disable password login
+# modifica .env per configurare OIDC o disabilitare il login con password
 docker compose up -d
 ```
 
-Open http://localhost:7842
+Apri http://localhost:7842
 
-Set `PASSWORD_LOGIN_ENABLED=false` in `.env` to hide the password form and disable `POST /login`.
-Use this only when another login method is configured, typically OIDC via `OIDC_PROVIDER_URL`, `OIDC_CLIENT_ID`, and `OIDC_CLIENT_SECRET`.
-After changing `.env`, restart the app or recreate the container so the new settings are loaded.
+## Funzionalita
 
-Run details can also fetch historical weather near the workout start time.
-The default provider is `WEATHER_PROVIDER=open-meteo`, which is free and does not need an API key.
-StrideLog stores run weather on first lookup and then serves it from the local database cache.
+### Import e gestione tracce
+- Drag & drop di file KMZ (multi-file)
+- Deduplicazione automatica tramite track ID di OpenTracks
+- Creazione manuale di attivita senza dati GPS
+- Tipi di attivita supportati: running, trail running, cycling, walking, hiking
 
-## Features
+### Dashboard e analisi
+- Card riepilogative (distanza totale, durata, numero attivita)
+- Grafici interattivi: trend distanza, istogramma passo, km settimanali, frequenza cardiaca, dislivello, distribuzione sforzo, scatter plot passo
+- Heatmap calendario con intensita attivita
+- Tabella ordinabile e filtrabile con colorazione passo (verde/giallo/rosso)
+- Obiettivi di distanza e durata con barre di progresso
 
-- Drag & drop GPX/KML/KMZ file upload (multi-file)
-- Automatic deduplication via OpenTracks track ID
-- Dashboard with summary cards and interactive charts (distance, pace, weekly km, HR, cumulative)
-- Map view with all runs overlaid (Leaflet.js with Carto tiles)
-- Sortable/filterable workout table with pace color coding
-- Dark/light theme toggle (persisted in localStorage)
-- PWA support (installable on mobile and desktop)
+### Mappe
+- Vista globale con tutte le tracce sovrapposte (Leaflet.js + Carto tiles)
+- Mappa dettagliata per singola traccia
+- Confronto side-by-side tra piu tracce
 
-## Data
+### Analisi dettagliata
+- Split personalizzabili (100m - 10km) con passo, tempo cumulativo, HR e dislivello per split
+- Record personali per sport (1km, 5km, 10km, mezza maratona, maratona)
+- Tempo in movimento separato dal tempo totale
+- Statistiche complete: velocita media/max, calorie, cadenza
 
-All data is persisted in a Docker named volume (`stridelog_data`):
-- SQLite database at `/data/tracks.db`
-- Uploaded files at `/data/uploads/`
+### Meteo
+- Dati meteo storici automatici da Open-Meteo (gratuito, senza API key)
+- Temperatura, umidita, vento, copertura nuvolosa, precipitazioni
+- Fetch automatico all'import; cache locale nel database
+- Grafico meteo in dashboard
 
-## Stack
+### Metadati e tag
+- Modifica nome, tipo attivita, tag e note per ogni traccia
+- Metadati contestuali per tipo di attivita (superficie, tipo di sessione, tecnicita, fango, sforzo percepito)
+- Modifica metadati in blocco su piu tracce
 
-- Python Flask + SQLAlchemy
-- SQLite
-- Chart.js + Leaflet.js (CDN)
-- Gunicorn
-- Docker
+### Export dati
+- Export CSV e JSON di tutte le statistiche
+- Backup e ripristino database SQLite (admin)
+
+### Autenticazione e multi-utente
+- Login con password (disabilitabile)
+- Login OIDC (OpenID Connect)
+- Il primo utente diventa admin
+- Isolamento dati per utente
+
+### Pannello admin
+- Gestione utenti (creazione, eliminazione, promozione admin)
+- Gestione tracce orfane (assegnazione o eliminazione)
+- Backup e ripristino database
+
+### PWA
+- Installabile su mobile e desktop
+- Service worker per funzionamento offline
+- Share target nativo Android (condividi file KMZ direttamente da OpenTracks)
+- Tema chiaro/scuro (salvato in localStorage)
+
+## Dati
+
+Tutti i dati persistono in un volume Docker (`stridelog_data`):
+- Database SQLite: `/data/tracks.db`
+- File caricati: `/data/uploads/`
+
+## Documentazione
+
+- [Documentazione tecnica](docs/TECHNICAL.md) — stack, configurazione, schema database, API, sicurezza
+
+## Licenza
+
+[GPLv3](LICENSE)
