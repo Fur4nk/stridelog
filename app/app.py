@@ -1012,6 +1012,12 @@ def process_file(file_storage, user_id, extra_data=None):
             output.append((fname, False, "Duplicate track"))
             continue
 
+        if weather_enabled:
+            try:
+                _get_or_fetch_weather(track)
+            except Exception:
+                pass
+
         upload_path = os.path.join(DATA_DIR, "uploads", fname)
         os.makedirs(os.path.dirname(upload_path), exist_ok=True)
         with open(upload_path, "wb") as f:
