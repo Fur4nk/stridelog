@@ -1,12 +1,23 @@
-FROM python:3.12-slim
+FROM python:3.12-alpine AS builder
+
+RUN pip install --no-cache-dir --prefix=/install \
+    flask flask-sqlalchemy flask-login authlib requests gunicorn
+
+FROM python:3.12-alpine
+
+COPY --from=builder /install /usr/local
 
 WORKDIR /app
-
-RUN pip install --no-cache-dir flask flask-sqlalchemy flask-login authlib requests gunicorn
 
 COPY app/ /app/app/
 COPY templates/ /app/templates/
 COPY static/ /app/static/
+
+RUN adduser -D -u 1000 appuser \
+    && mkdir -p /data \
+    && chown -R appuser:appuser /app /data
+
+USER appuser
 
 EXPOSE 5000
 
